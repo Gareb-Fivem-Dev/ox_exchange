@@ -1,0 +1,27 @@
+{
+    "diagnostics.globals": [
+        "AddEventHandler",
+        "Config",
+        "CreatePed",
+        "CreateThread",
+        "DeleteEntity",
+        "DoesEntityExist",
+        "FreezeEntityPosition",
+        "GetCurrentResourceName",
+        "IsPlayerAceAllowed",
+        "MySQL",
+        "RegisterNetEvent",
+        "SetBlockingOfNonTemporaryEvents",
+        "SetEntityInvincible",
+        "SetModelAsNoLongerNeeded",
+        "TaskStartScenarioInPlace",
+        "TriggerClientEvent",
+        "TriggerServerEvent",
+        "exports",
+        "joaat",
+        "lib",
+        "source",
+        "vec4"
+    ],
+    "runtime.version": "Lua 5.4"
+}
