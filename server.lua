@@ -5,6 +5,12 @@ local buyersLoaded = false
 local peds = {}
 local pedsLoaded = false
 local QBCore
+local vehicleSpawner = nil
+
+-- Load vehicle spawner module if enabled
+if Config.VehicleSpawner and Config.VehicleSpawner.enabled then
+    vehicleSpawner = require('./vehicle_spawner')
+end
 
 local function notify(source, message, notifyType)
     TriggerClientEvent('ox_lib:notify', source, {
@@ -23,6 +29,140 @@ end
 
 local function isPedAdmin(source)
     return source == 0 or IsPlayerAceAllowed(source, Config.PedAdmin.ace)
+end
+
+local function isVehicleSpawnerAdmin(source)
+    if not Config.VehicleSpawnerAdmin.enabled then
+        return false
+    end
+    return source == 0 or IsPlayerAceAllowed(source, Config.VehicleSpawnerAdmin.ace)
+end
+
+local function nonEmptyString(value, fallback)
+    value = tostring(value or '')
+
+    if value == '' then
+        return fallback
+    end
+
+    return value
+end
+
+local function getDefaultPedTargetLabel(pedType)
+    if pedType == 'buyer' then
+        return 'Buyer'
+    elseif pedType == 'vehicle_spawner' then
+        return 'Vehicle Spawner'
+    elseif pedType == 'decoration' then
+        return ''
+    end
+
+    return 'Trader'
+end
+
+local function getDefaultPedTargetIcon(pedType)
+    if pedType == 'buyer' then
+        return 'fa-solid fa-dollar-sign'
+    elseif pedType == 'vehicle_spawner' then
+        return 'fa-solid fa-car'
+    end
+
+    return 'fa-solid fa-hand-holding-dollar'
+end
+
+local function getPlayerJobNameAndType(source)
+    if GetResourceState('qb-core') ~= 'started' then
+        return '', ''
+    end
+
+    local qbCore = exports['qb-core']:GetCoreObject()
+    if not qbCore then
+        return '', ''
+    end
+
+    local player = qbCore.Functions.GetPlayer(source)
+    if not player then
+        return '', ''
+    end
+
+    local job = player.PlayerData and player.PlayerData.job or {}
+    local jobName = tostring(job.name or ''):lower()
+    local jobType = tostring(job.type or ''):lower()
+    return jobName, jobType
+end
+
+local function isVehicleAllowedForJob(allowedJobs, source)
+    local normalized = {}
+    local seen = {}
+    for token in tostring(allowedJobs or ''):gmatch('[^,%s]+') do
+        local value = token:lower():gsub('[^%w_%-]', '')
+        if value ~= '' and not seen[value] then
+            seen[value] = true
+            normalized[#normalized + 1] = value
+        end
+    end
+
+    if #normalized == 0 then
+        return true
+    end
+
+    local jobName, jobType = getPlayerJobNameAndType(source)
+    if jobName == '' and jobType == '' then
+        return false
+    end
+
+    for _, token in ipairs(normalized) do
+        if token == jobName or token == jobType then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function parseExtrasList(value)
+    if value == nil then
+        return nil
+    end
+
+    if type(value) == 'table' then
+        local list = {}
+        local seen = {}
+
+        for _, entry in ipairs(value) do
+            local extraId = math.floor(tonumber(entry) or -1)
+            if extraId >= 0 and extraId <= 30 and not seen[extraId] then
+                seen[extraId] = true
+                list[#list + 1] = extraId
+            end
+        end
+
+        table.sort(list)
+        return #list > 0 and list or nil
+    end
+
+    local text = tostring(value)
+    if text == '' then
+        return nil
+    end
+
+    local ok, decoded = pcall(json.decode, text)
+    if ok and type(decoded) == 'table' then
+        return parseExtrasList(decoded)
+    end
+
+    local list = {}
+    local seen = {}
+    for token in text:gmatch('[^,%s]+') do
+        local extraId = math.floor(tonumber(token) or -1)
+        if extraId >= 0 and extraId <= 30 and not seen[extraId] then
+            seen[extraId] = true
+            list[#list + 1] = extraId
+        end
+    end
+
+    table.sort(list)
+    return #list > 0 and list or nil
 end
 
 local function useQbCoreMoney()
@@ -78,11 +218,87 @@ local function giveBuyerPayout(source, amount)
     return exports.ox_inventory:AddItem(source, Config.BuyerMoneyItem, amount)
 end
 
+local cachedWeaponItems
+
+local function getWeaponItems()
+    if cachedWeaponItems then
+        return cachedWeaponItems
+    end
+
+    cachedWeaponItems = {}
+
+    local weaponsFile = LoadResourceFile('ox_inventory', 'data/weapons.lua')
+
+    if not weaponsFile or weaponsFile == '' then
+        return cachedWeaponItems
+    end
+
+    local chunk = load(weaponsFile, '@ox_inventory/data/weapons.lua', 't', {})
+
+    if not chunk then
+        return cachedWeaponItems
+    end
+
+    local success, result = pcall(chunk)
+
+    if not success or type(result) ~= 'table' then
+        return cachedWeaponItems
+    end
+
+    for weaponName, weaponData in pairs(result) do
+        if type(weaponName) == 'string' and type(weaponData) == 'table' then
+            cachedWeaponItems[weaponName] = weaponData
+        end
+    end
+
+    return cachedWeaponItems
+end
+
+local function getWeaponItem(itemName)
+    if type(itemName) ~= 'string' or itemName == '' then
+        return nil, nil
+    end
+
+    local weapons = getWeaponItems()
+    local direct = weapons[itemName]
+
+    if type(direct) == 'table' then
+        return itemName, direct
+    end
+
+    local upperName = itemName:upper()
+    direct = weapons[upperName]
+
+    if type(direct) == 'table' then
+        return upperName, direct
+    end
+
+    local lowerName = itemName:lower()
+
+    for weaponName, weaponData in pairs(weapons) do
+        if weaponName:lower() == lowerName then
+            return weaponName, weaponData
+        end
+    end
+
+    return nil, nil
+end
+
 local function getItemLabel(itemName)
     local item = exports.ox_inventory:Items(itemName)
 
     if item and item.label then
         return item.label
+    end
+
+    local weaponName, weapon = getWeaponItem(itemName)
+
+    if weapon and weapon.label then
+        return weapon.label
+    end
+
+    if weaponName then
+        return weaponName
     end
 
     return itemName
@@ -102,6 +318,25 @@ local function getItemImage(itemName)
         end
 
         return ('nui://ox_inventory/web/images/%s'):format(image)
+    end
+
+    local weaponName, weapon = getWeaponItem(itemName)
+    local weaponImage = weapon and (weapon.image or weapon.client and weapon.client.image)
+
+    if weaponImage and weaponImage:find('^nui://') then
+        return weaponImage
+    end
+
+    if weaponImage then
+        if not weaponImage:find('%.%w+$') then
+            weaponImage = ('%s.png'):format(weaponImage)
+        end
+
+        return ('nui://ox_inventory/web/images/%s'):format(weaponImage)
+    end
+
+    if weaponName then
+        return ('nui://ox_inventory/web/images/%s.png'):format(weaponName:lower())
     end
 
     return ('nui://ox_inventory/web/images/%s.png'):format(itemName)
@@ -204,9 +439,15 @@ local function toBuyer(row)
 end
 
 local function toPed(row)
+    local spawnX = tonumber(row.spawn_x)
+    local spawnY = tonumber(row.spawn_y)
+    local spawnZ = tonumber(row.spawn_z)
+    local spawnW = tonumber(row.spawn_w)
+
     local ped = {
         index = row.id,
         enabled = row.enabled == 1 or row.enabled == true,
+        showPed = row.show_ped == nil or row.show_ped == 1 or row.show_ped == true,
         type = row.type,
         model = row.model,
         coords = {
@@ -216,13 +457,33 @@ local function toPed(row)
             w = row.w
         },
         scenario = row.scenario,
-        targetLabel = row.target_label,
-        targetIcon = row.target_icon,
-        menuTitle = row.menu_title
+        targetLabel = nonEmptyString(row.target_label, getDefaultPedTargetLabel(row.type)),
+        targetIcon = nonEmptyString(row.target_icon, getDefaultPedTargetIcon(row.type)),
+        menuTitle = nonEmptyString(row.menu_title, row.type == 'buyer' and 'Item Buyer' or row.type == 'vehicle_spawner' and 'Vehicle Spawner' or Config.Menu.title),
+        blipEnabled = row.blip_enabled == 1 or row.blip_enabled == true,
+        blipSprite = tonumber(row.blip_sprite) or 280,
+        exportName = row.export_name or '',
+        exportResource = row.export_resource or '',
+        exportSide = row.export_side or 'client',
+        targetJobs = row.target_jobs or '',
+        targetJobTypes = row.target_job_types or ''
     }
+
+    if spawnX and spawnY and spawnZ then
+        ped.spawnCoords = {
+            x = spawnX,
+            y = spawnY,
+            z = spawnZ,
+            w = spawnW or 0.0
+        }
+    end
 
     if row.type == 'buyer' then
         ped.buyer = row.group_id or 1
+    elseif row.type == 'vehicle_spawner' then
+        ped.vehicle_spawner = tonumber(row.group_id) or nil
+    elseif row.type == 'decoration' or row.type == 'export' then
+        -- no group ID for these types
     else
         ped.trader = row.group_id or 1
     end
@@ -341,8 +602,8 @@ local function seedPeds()
         local coords = ped.coords or vec4(0.0, 0.0, 0.0, 0.0)
 
         MySQL.insert.await(([[
-            INSERT INTO `%s` (`type`, `group_id`, `model`, `x`, `y`, `z`, `w`, `scenario`, `target_label`, `target_icon`, `menu_title`, `enabled`)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO `%s` (`type`, `group_id`, `model`, `x`, `y`, `z`, `w`, `scenario`, `target_label`, `target_icon`, `menu_title`, `blip_enabled`, `blip_sprite`, `show_ped`, `enabled`)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ]]):format(Config.PedDatabase.table), {
             pedType,
             groupId,
@@ -352,9 +613,12 @@ local function seedPeds()
             coords.z,
             coords.w or 0.0,
             ped.scenario or '',
-            ped.targetLabel or (pedType == 'buyer' and 'Buyer' or 'Trader'),
-            ped.targetIcon or (pedType == 'buyer' and 'fa-solid fa-dollar-sign' or 'fa-solid fa-hand-holding-dollar'),
+            nonEmptyString(ped.targetLabel, getDefaultPedTargetLabel(pedType)),
+            nonEmptyString(ped.targetIcon, getDefaultPedTargetIcon(pedType)),
             ped.menuTitle or (pedType == 'buyer' and 'Item Buyer' or Config.Menu.title),
+            ped.blipEnabled and 1 or 0,
+            tonumber(ped.blipSprite) or 280,
+            ped.showPed == false and 0 or 1,
             ped.enabled == false and 0 or 1
         })
     end
@@ -417,12 +681,104 @@ local function createPedTable()
             `target_label` varchar(100) NOT NULL DEFAULT 'Trader',
             `target_icon` varchar(100) NOT NULL DEFAULT 'fa-solid fa-hand-holding-dollar',
             `menu_title` varchar(100) NOT NULL DEFAULT 'Item Exchange',
+            `blip_enabled` tinyint(1) NOT NULL DEFAULT 0,
+            `blip_sprite` int unsigned NOT NULL DEFAULT 280,
+            `show_ped` tinyint(1) NOT NULL DEFAULT 1,
+            `target_jobs` varchar(255) NOT NULL DEFAULT '',
+            `target_job_types` varchar(255) NOT NULL DEFAULT '',
+            `spawn_x` double NULL,
+            `spawn_y` double NULL,
+            `spawn_z` double NULL,
+            `spawn_w` double NULL,
+            `export_name` varchar(100) NOT NULL DEFAULT '',
+            `export_resource` varchar(100) NOT NULL DEFAULT '',
+            `export_side` varchar(10) NOT NULL DEFAULT 'client',
             `enabled` tinyint(1) NOT NULL DEFAULT 1,
             `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
             `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     ]]):format(Config.PedDatabase.table))
+
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `blip_enabled` tinyint(1) NOT NULL DEFAULT 0 AFTER `menu_title`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `blip_sprite` int unsigned NOT NULL DEFAULT 280 AFTER `blip_enabled`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `show_ped` tinyint(1) NOT NULL DEFAULT 1 AFTER `blip_sprite`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `target_jobs` varchar(255) NOT NULL DEFAULT "" AFTER `show_ped`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `target_job_types` varchar(255) NOT NULL DEFAULT "" AFTER `target_jobs`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `spawn_x` double NULL AFTER `target_job_types`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `spawn_y` double NULL AFTER `spawn_x`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `spawn_z` double NULL AFTER `spawn_y`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `spawn_w` double NULL AFTER `spawn_z`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `export_name` varchar(100) NOT NULL DEFAULT "" AFTER `target_job_types`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `export_resource` varchar(100) NOT NULL DEFAULT "" AFTER `export_name`'):format(Config.PedDatabase.table))
+    MySQL.query.await(('ALTER TABLE `%s` ADD COLUMN IF NOT EXISTS `export_side` varchar(10) NOT NULL DEFAULT "client" AFTER `export_resource`'):format(Config.PedDatabase.table))
+end
+
+local function createVehicleSpawnerTables()
+    MySQL.query.await([[
+        CREATE TABLE IF NOT EXISTS `vehicle_spawner_certs` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT,
+            `vehicle_spawner_id` int unsigned,
+            `cert_type` varchar(50) NOT NULL,
+            `label` varchar(100) NOT NULL,
+            `max_spawned` int unsigned NOT NULL DEFAULT 2,
+            `enabled` tinyint(1) NOT NULL DEFAULT 1,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unique_spawner_cert` (`vehicle_spawner_id`, `cert_type`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ]])
+
+    MySQL.query.await([[
+        CREATE TABLE IF NOT EXISTS `vehicle_spawner_vehicles` (
+            `id` int unsigned NOT NULL AUTO_INCREMENT,
+            `vehicle_spawner_id` int unsigned,
+            `cert_type` varchar(50) NOT NULL,
+            `label` varchar(100) NOT NULL,
+            `model` varchar(100) NOT NULL,
+            `livery` int NULL,
+            `extras` text NULL,
+            `mod_engine` tinyint NULL,
+            `allowed_jobs` varchar(255) NOT NULL DEFAULT '',
+            `enabled` tinyint(1) NOT NULL DEFAULT 1,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `unique_spawner_cert_model` (`vehicle_spawner_id`, `cert_type`, `model`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ]])
+
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_certs` ADD COLUMN IF NOT EXISTS `vehicle_spawner_id` int unsigned NULL AFTER `id`')
+    end)
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_vehicles` ADD COLUMN IF NOT EXISTS `vehicle_spawner_id` int unsigned NULL AFTER `id`')
+    end)
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_vehicles` ADD COLUMN IF NOT EXISTS `livery` int NULL AFTER `model`')
+    end)
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_vehicles` ADD COLUMN IF NOT EXISTS `extras` text NULL AFTER `livery`')
+    end)
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_vehicles` ADD COLUMN IF NOT EXISTS `mod_engine` tinyint NULL AFTER `extras`')
+    end)
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_vehicles` ADD COLUMN IF NOT EXISTS `allowed_jobs` varchar(255) NOT NULL DEFAULT "" AFTER `mod_engine`')
+    end)
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_certs` DROP INDEX `cert_type`')
+    end)
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_certs` ADD UNIQUE KEY `unique_spawner_cert` (`vehicle_spawner_id`, `cert_type`)')
+    end)
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_vehicles` DROP INDEX `unique_cert_model`')
+    end)
+    pcall(function()
+        MySQL.query.await('ALTER TABLE `vehicle_spawner_vehicles` ADD UNIQUE KEY `unique_spawner_cert_model` (`vehicle_spawner_id`, `cert_type`, `model`)')
+    end)
 end
 
 local function getTradeList(filter, includeDisabled)
@@ -455,6 +811,40 @@ local function getTradeList(filter, includeDisabled)
     return list
 end
 
+local function getTradeListWithInventory(source, filter)
+    local baseList = getTradeList(filter, false)
+    local list = {}
+
+    for _, trade in ipairs(baseList) do
+        local owned = exports.ox_inventory:GetItemCount(source, trade.cost.item) or 0
+        list[#list + 1] = {
+            index = trade.index,
+            trader = trade.trader,
+            label = trade.label,
+            description = trade.description,
+            icon = trade.icon,
+            enabled = trade.enabled,
+            cost = {
+                item = trade.cost.item,
+                label = trade.cost.label,
+                image = trade.cost.image,
+                count = trade.cost.count
+            },
+            receive = {
+                item = trade.receive.item,
+                label = trade.receive.label,
+                image = trade.receive.image,
+                count = trade.receive.count,
+                formula = trade.receive.formula
+            },
+            owned = owned,
+            canTrade = owned >= trade.cost.count
+        }
+    end
+
+    return list
+end
+
 local function getBuyerList(filter, includeDisabled)
     local list = {}
     local buyerId = tonumber(filter)
@@ -468,6 +858,33 @@ local function getBuyerList(filter, includeDisabled)
     table.sort(list, function(first, second)
         return first.index < second.index
     end)
+
+    return list
+end
+
+local function getBuyerListWithInventory(source, filter)
+    local baseList = getBuyerList(filter, false)
+    local list = {}
+
+    for _, buyer in ipairs(baseList) do
+        local owned = exports.ox_inventory:GetItemCount(source, buyer.item.name) or 0
+        list[#list + 1] = {
+            index = buyer.index,
+            buyer = buyer.buyer,
+            label = buyer.label,
+            description = buyer.description,
+            enabled = buyer.enabled,
+            item = {
+                name = buyer.item.name,
+                label = buyer.item.label,
+                image = buyer.item.image,
+                count = buyer.item.count
+            },
+            price = buyer.price,
+            owned = owned,
+            canSell = owned >= buyer.item.count
+        }
+    end
 
     return list
 end
@@ -488,6 +905,25 @@ local function getPedList(filterType, includeDisabled)
     return list
 end
 
+local function normalizeAccessList(value)
+    local list = {}
+    local seen = {}
+
+    if type(value) == 'table' then
+        value = table.concat(value, ',')
+    end
+
+    for token in tostring(value or ''):gmatch('[^,%s]+') do
+        local normalized = token:lower():gsub('[^%w_%-]', '')
+        if normalized ~= '' and not seen[normalized] then
+            seen[normalized] = true
+            list[#list + 1] = normalized
+        end
+    end
+
+    return table.concat(list, ',')
+end
+
 local function normalizePedData(data)
     local pedType = tostring(data.type or 'trader')
     local groupId = math.floor(tonumber(data.groupId) or tonumber(data.group_id) or 0)
@@ -496,27 +932,85 @@ local function normalizePedData(data)
     local y = tonumber(data.y)
     local z = tonumber(data.z)
     local w = tonumber(data.w) or 0.0
+    local spawnX = tonumber(data.spawnX or data.spawn_x)
+    local spawnY = tonumber(data.spawnY or data.spawn_y)
+    local spawnZ = tonumber(data.spawnZ or data.spawn_z)
+    local spawnW = tonumber(data.spawnW or data.spawn_w)
 
-    if pedType ~= 'buyer' then
+    if pedType ~= 'buyer' and pedType ~= 'decoration' and pedType ~= 'export' and pedType ~= 'vehicle_spawner' then
         pedType = 'trader'
+    end
+
+    local exportSide = tostring(data.exportSide or data.export_side or 'client')
+    if exportSide ~= 'server' then
+        exportSide = 'client'
+    end
+
+    if pedType == 'vehicle_spawner' then
+        spawnX = spawnX or x
+        spawnY = spawnY or y
+        spawnZ = spawnZ or z
+        spawnW = spawnW or w
+    else
+        spawnX, spawnY, spawnZ, spawnW = nil, nil, nil, nil
     end
 
     return {
         type = pedType,
-        groupId = groupId,
+        groupId = (pedType == 'decoration' or pedType == 'export') and 0 or (groupId >= 1 and groupId or 1),
         model = model,
         x = x,
         y = y,
         z = z,
         w = w,
         scenario = tostring(data.scenario or ''),
-        targetLabel = tostring(data.targetLabel or (pedType == 'buyer' and 'Buyer' or 'Trader')),
-        targetIcon = tostring(data.targetIcon or (pedType == 'buyer' and 'fa-solid fa-dollar-sign' or 'fa-solid fa-hand-holding-dollar')),
-        menuTitle = tostring(data.menuTitle or (pedType == 'buyer' and 'Item Buyer' or Config.Menu.title))
+        targetLabel = nonEmptyString(data.targetLabel, getDefaultPedTargetLabel(pedType)),
+        targetIcon = nonEmptyString(data.targetIcon, getDefaultPedTargetIcon(pedType)),
+        menuTitle = nonEmptyString(data.menuTitle, pedType == 'buyer' and 'Item Buyer' or pedType == 'vehicle_spawner' and 'Vehicle Spawner' or (pedType == 'decoration') and '' or Config.Menu.title),
+        blipEnabled = data.blipEnabled == true or data.blipEnabled == 'true' or data.blipEnabled == 'on' or data.blipEnabled == 1 or data.blipEnabled == '1',
+        blipSprite = math.floor(tonumber(data.blipSprite) or 280),
+        showPed = data.showPed == nil or data.showPed == true or data.showPed == 'true' or data.showPed == 'on' or data.showPed == 1 or data.showPed == '1',
+        targetJobs = pedType == 'vehicle_spawner' and normalizeAccessList(data.targetJobs or data.target_jobs) or '',
+        targetJobTypes = pedType == 'vehicle_spawner' and normalizeAccessList(data.targetJobTypes or data.target_job_types) or '',
+        spawnX = spawnX,
+        spawnY = spawnY,
+        spawnZ = spawnZ,
+        spawnW = spawnW,
+        exportName = tostring(data.exportName or data.export_name or ''),
+        exportResource = tostring(data.exportResource or data.export_resource or ''),
+        exportSide = exportSide
     }
 end
 
 local function isValidPedData(pedData)
+    if pedData.type == 'decoration' then
+        return pedData.model ~= ''
+            and pedData.x ~= nil
+            and pedData.y ~= nil
+            and pedData.z ~= nil
+    end
+
+    if pedData.type == 'vehicle_spawner' then
+        return pedData.model ~= ''
+            and pedData.x ~= nil
+            and pedData.y ~= nil
+            and pedData.z ~= nil
+            and pedData.spawnX ~= nil
+            and pedData.spawnY ~= nil
+            and pedData.spawnZ ~= nil
+            and pedData.groupId >= 1
+    end
+
+    if pedData.type == 'export' then
+        return pedData.model ~= ''
+            and pedData.x ~= nil
+            and pedData.y ~= nil
+            and pedData.z ~= nil
+            and pedData.exportName ~= ''
+            and pedData.exportResource ~= ''
+            and pedData.targetLabel ~= ''
+    end
+
     return pedData.groupId >= 1
         and pedData.model ~= ''
         and pedData.x ~= nil
@@ -530,6 +1024,7 @@ MySQL.ready(function()
     createTable()
     createBuyerTable()
     createPedTable()
+    createVehicleSpawnerTables()
     seedTrades()
     seedBuyers()
     seedPeds()
@@ -538,12 +1033,12 @@ MySQL.ready(function()
     loadPeds()
 end)
 
-lib.callback.register('item_exchange:server:getTrades', function(_, filter)
+lib.callback.register('item_exchange:server:getTrades', function(source, filter)
     if not tradesLoaded then
         return nil
     end
 
-    return getTradeList(filter, false)
+    return getTradeListWithInventory(source, filter)
 end)
 
 lib.callback.register('item_exchange:server:getAdminTrades', function(source)
@@ -560,29 +1055,45 @@ lib.callback.register('item_exchange:server:getAdminItems', function(source)
     end
 
     local items = {}
+    local addedItems = {}
     local inventoryItems = exports.ox_inventory:Items()
 
-    for itemName, item in pairs(inventoryItems or {}) do
+    local function addAdminItem(itemName, label)
+        local normalizedName = tostring(itemName or ''):lower()
+
+        if normalizedName == '' or addedItems[normalizedName] then
+            return
+        end
+
+        addedItems[normalizedName] = true
         items[#items + 1] = {
             name = itemName,
-            label = item.label or itemName,
+            label = label or itemName,
             image = getItemImage(itemName)
         }
     end
 
+    for itemName, item in pairs(inventoryItems or {}) do
+        addAdminItem(itemName, item.label or itemName)
+    end
+
+    for weaponName, weapon in pairs(getWeaponItems()) do
+        addAdminItem(weaponName, weapon.label or weaponName)
+    end
+
     table.sort(items, function(first, second)
-        return first.label < second.label
+        return first.label:lower() < second.label:lower()
     end)
 
     return items
 end)
 
-lib.callback.register('item_exchange:server:getBuyers', function(_, filter)
+lib.callback.register('item_exchange:server:getBuyers', function(source, filter)
     if not buyersLoaded then
         return nil
     end
 
-    return getBuyerList(filter, false)
+    return getBuyerListWithInventory(source, filter)
 end)
 
 lib.callback.register('item_exchange:server:getPeds', function(_)
@@ -660,10 +1171,11 @@ RegisterCommand(Config.Exchange.command, function(source)
     local access = {
         trades = isAdmin(source),
         buyers = isBuyerAdmin(source),
-        peds = isPedAdmin(source)
+        peds = isPedAdmin(source),
+        vehicles = isVehicleSpawnerAdmin(source)
     }
 
-    if not access.trades and not access.buyers and not access.peds then
+    if not access.trades and not access.buyers and not access.peds and not access.vehicles then
         notify(source, 'You do not have permission to use this command.', 'error')
         return
     end
@@ -720,6 +1232,7 @@ RegisterNetEvent('item_exchange:server:trade', function(id, amount)
     end
 
     notify(source, ('Traded %sx %s for %sx %s.'):format(costCount, trade.cost.label, receiveCount, trade.receive.label), 'success')
+    TriggerClientEvent('item_exchange:client:tradeCompleted', source, costItem, costCount, receiveItem, receiveCount)
 end)
 
 RegisterNetEvent('item_exchange:server:sellBuyerItem', function(id, amount)
@@ -763,6 +1276,7 @@ RegisterNetEvent('item_exchange:server:sellBuyerItem', function(id, amount)
     end
 
     notify(source, ('Sold %sx %s for $%s.'):format(itemCount, buyer.item.label, payout), 'success')
+    TriggerClientEvent('item_exchange:client:buyerSold', source, buyer.index, itemCount)
 end)
 
 RegisterNetEvent('item_exchange:server:adminAddTrade', function(data)
@@ -1088,8 +1602,8 @@ RegisterNetEvent('item_exchange:server:pedAdminAddPed', function(data)
     end
 
     MySQL.insert.await(([[
-        INSERT INTO `%s` (`type`, `group_id`, `model`, `x`, `y`, `z`, `w`, `scenario`, `target_label`, `target_icon`, `menu_title`, `enabled`)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO `%s` (`type`, `group_id`, `model`, `x`, `y`, `z`, `w`, `scenario`, `target_label`, `target_icon`, `menu_title`, `blip_enabled`, `blip_sprite`, `show_ped`, `target_jobs`, `target_job_types`, `spawn_x`, `spawn_y`, `spawn_z`, `spawn_w`, `export_name`, `export_resource`, `export_side`, `enabled`)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     ]]):format(Config.PedDatabase.table), {
         pedData.type,
         pedData.groupId,
@@ -1101,7 +1615,19 @@ RegisterNetEvent('item_exchange:server:pedAdminAddPed', function(data)
         pedData.scenario,
         pedData.targetLabel,
         pedData.targetIcon,
-        pedData.menuTitle
+        pedData.menuTitle,
+        pedData.blipEnabled and 1 or 0,
+        pedData.blipSprite,
+        pedData.showPed and 1 or 0,
+        pedData.targetJobs,
+        pedData.targetJobTypes,
+        pedData.spawnX,
+        pedData.spawnY,
+        pedData.spawnZ,
+        pedData.spawnW,
+        pedData.exportName,
+        pedData.exportResource,
+        pedData.exportSide
     })
 
     loadPeds()
@@ -1133,7 +1659,7 @@ RegisterNetEvent('item_exchange:server:pedAdminUpdatePed', function(data)
 
     MySQL.update.await(([[
         UPDATE `%s`
-        SET `type` = ?, `group_id` = ?, `model` = ?, `x` = ?, `y` = ?, `z` = ?, `w` = ?, `scenario` = ?, `target_label` = ?, `target_icon` = ?, `menu_title` = ?
+        SET `type` = ?, `group_id` = ?, `model` = ?, `x` = ?, `y` = ?, `z` = ?, `w` = ?, `scenario` = ?, `target_label` = ?, `target_icon` = ?, `menu_title` = ?, `blip_enabled` = ?, `blip_sprite` = ?, `show_ped` = ?, `target_jobs` = ?, `target_job_types` = ?, `spawn_x` = ?, `spawn_y` = ?, `spawn_z` = ?, `spawn_w` = ?, `export_name` = ?, `export_resource` = ?, `export_side` = ?
         WHERE `id` = ?
     ]]):format(Config.PedDatabase.table), {
         pedData.type,
@@ -1147,6 +1673,18 @@ RegisterNetEvent('item_exchange:server:pedAdminUpdatePed', function(data)
         pedData.targetLabel,
         pedData.targetIcon,
         pedData.menuTitle,
+        pedData.blipEnabled and 1 or 0,
+        pedData.blipSprite,
+        pedData.showPed and 1 or 0,
+        pedData.targetJobs,
+        pedData.targetJobTypes,
+        pedData.spawnX,
+        pedData.spawnY,
+        pedData.spawnZ,
+        pedData.spawnW,
+        pedData.exportName,
+        pedData.exportResource,
+        pedData.exportSide,
         ped.index
     })
 
@@ -1201,3 +1739,318 @@ RegisterNetEvent('item_exchange:server:pedAdminDeletePed', function(id)
     TriggerClientEvent('item_exchange:client:refreshPeds', -1)
     TriggerClientEvent('item_exchange:client:refreshPedAdminMenu', source)
 end)
+
+RegisterNetEvent('item_exchange:server:triggerExportPed', function(pedIndex)
+    local source = source
+    local ped = peds[tonumber(pedIndex)]
+
+    if not ped or ped.type ~= 'export' or ped.exportSide ~= 'server' then
+        return
+    end
+
+    local resource = ped.exportResource
+    local exportName = ped.exportName
+
+    if not resource or resource == '' or not exportName or exportName == '' then
+        return
+    end
+
+    if GetResourceState(resource) ~= 'started' then
+        notify(source, ('Resource "%s" is not running.'):format(resource), 'error')
+        return
+    end
+
+    exports[resource][exportName](source)
+end)
+
+-- ========== VEHICLE SPAWNER ADMIN ==========
+
+lib.callback.register('item_exchange:server:getVehicleAdminData', function(source)
+    if not isVehicleSpawnerAdmin(source) then
+        return nil
+    end
+
+    local certs = MySQL.query.await('SELECT * FROM vehicle_spawner_certs ORDER BY cert_type ASC')
+    local vehicles = MySQL.query.await('SELECT * FROM vehicle_spawner_vehicles ORDER BY cert_type ASC')
+
+    return {
+        certs = certs or {},
+        vehicles = vehicles or {}
+    }
+end)
+
+RegisterNetEvent('item_exchange:server:vehicleAdminAddCert', function(data)
+    local source = source
+    if not isVehicleSpawnerAdmin(source) then
+        return
+    end
+
+    local certType = tostring(data.cert_type or ''):lower():gsub('%s+', '')
+    local label = tostring(data.label or '')
+    local maxSpawned = math.floor(tonumber(data.max_spawned) or 2)
+    local rawSpawnerId = tonumber(data.vehicle_spawner_id)
+    local spawnerId = rawSpawnerId and math.floor(rawSpawnerId) or nil
+
+    if spawnerId and spawnerId < 1 then
+        spawnerId = nil
+    end
+
+    if certType == '' or label == '' or maxSpawned < 1 then
+        notify(source, 'Invalid certification data', 'error')
+        return
+    end
+
+    MySQL.insert.await('INSERT INTO vehicle_spawner_certs (vehicle_spawner_id, cert_type, label, max_spawned) VALUES (?, ?, ?, ?)', {
+        spawnerId, certType, label, maxSpawned
+    }, function()
+        notify(source, 'Certification added', 'success')
+        TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
+    end)
+end)
+
+RegisterNetEvent('item_exchange:server:vehicleAdminAddVehicle', function(data)
+    local source = source
+    if not isVehicleSpawnerAdmin(source) then
+        return
+    end
+
+    local certType = tostring(data.cert_type or ''):lower():gsub('%s+', '')
+    local model = tostring(data.model or '')
+    local label = tostring(data.label or '')
+    local rawSpawnerId = tonumber(data.vehicle_spawner_id)
+    local spawnerId = rawSpawnerId and math.floor(rawSpawnerId) or nil
+    local livery = tonumber(data.livery)
+    local modEngine = tonumber(data.mod_engine)
+    local allowedJobs = normalizeAccessList(data.allowed_jobs)
+    local extrasList = parseExtrasList(data.extras)
+    local extrasJson = extrasList and json.encode(extrasList) or nil
+
+    if spawnerId and spawnerId < 1 then
+        spawnerId = nil
+    end
+
+    if livery ~= nil then
+        livery = math.floor(livery)
+        if livery < 0 then
+            livery = nil
+        end
+    end
+
+    if modEngine ~= nil then
+        modEngine = math.floor(modEngine)
+        if modEngine < 0 or modEngine > 4 then
+            modEngine = nil
+        end
+    end
+
+    if certType == '' or model == '' or label == '' then
+        notify(source, 'Invalid vehicle data', 'error')
+        return
+    end
+
+    MySQL.insert.await('INSERT INTO vehicle_spawner_vehicles (vehicle_spawner_id, cert_type, model, label, livery, extras, mod_engine, allowed_jobs) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
+        spawnerId, certType, model, label, livery, extrasJson, modEngine, allowedJobs
+    }, function()
+        notify(source, 'Vehicle added', 'success')
+        TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
+    end)
+end)
+
+RegisterNetEvent('item_exchange:server:vehicleAdminDeleteCert', function(id)
+    local source = source
+    if not isVehicleSpawnerAdmin(source) then
+        return
+    end
+
+    id = tonumber(id)
+    if not id then
+        return
+    end
+
+    local cert = MySQL.single.await('SELECT cert_type, vehicle_spawner_id FROM vehicle_spawner_certs WHERE id = ?', { id })
+    if not cert then
+        return
+    end
+
+    MySQL.update.await('DELETE FROM vehicle_spawner_certs WHERE id = ?', { id })
+    MySQL.update.await('DELETE FROM vehicle_spawner_vehicles WHERE cert_type = ? AND vehicle_spawner_id <=> ?', { cert.cert_type, cert.vehicle_spawner_id })
+    notify(source, 'Certification and vehicles deleted', 'success')
+    TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
+end)
+
+RegisterNetEvent('item_exchange:server:vehicleAdminDeleteVehicle', function(id)
+    local source = source
+    if not isVehicleSpawnerAdmin(source) then
+        return
+    end
+
+    MySQL.update.await('DELETE FROM vehicle_spawner_vehicles WHERE id = ?', { id })
+    notify(source, 'Vehicle deleted', 'success')
+    TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
+end)
+
+RegisterNetEvent('item_exchange:server:vehicleAdminToggleCert', function(id)
+    local source = source
+    if not isVehicleSpawnerAdmin(source) then
+        return
+    end
+
+    id = tonumber(id)
+    if not id then
+        return
+    end
+
+    MySQL.update.await('UPDATE vehicle_spawner_certs SET enabled = NOT enabled WHERE id = ?', { id })
+    notify(source, 'Certification toggled', 'success')
+    TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
+end)
+
+RegisterNetEvent('item_exchange:server:vehicleAdminToggleVehicle', function(id)
+    local source = source
+    if not isVehicleSpawnerAdmin(source) then
+        return
+    end
+
+    MySQL.update.await('UPDATE vehicle_spawner_vehicles SET enabled = NOT enabled WHERE id = ?', { id })
+    notify(source, 'Vehicle toggled', 'success')
+    TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
+end)
+
+-- ========== VEHICLE SPAWNER EVENTS ==========
+
+if vehicleSpawner then
+    -- Initialize vehicle spawner on MySQL ready
+    local vehicleSpawnerInitialized = false
+    
+    local originalMySQLReady = MySQL.ready
+    MySQL.ready(function()
+        if not vehicleSpawnerInitialized then
+            vehicleSpawner.initialize()
+            vehicleSpawner.resetSpawnedVehicles()
+            vehicleSpawnerInitialized = true
+        end
+        if originalMySQLReady then originalMySQLReady() end
+    end)
+
+    -- Callback: Check if player has certification
+    lib.callback.register('item_exchange:server:hasVehicleCertification', function(source, certType)
+        return vehicleSpawner.hasPlayerCertification(source, certType)
+    end)
+
+    -- Callback: Check if can spawn vehicle
+    lib.callback.register('item_exchange:server:canSpawnVehicle', function(source, certType, maxSpawned, label)
+        maxSpawned = math.floor(tonumber(maxSpawned) or 0)
+
+        if maxSpawned > 0 then
+            local currentCount = vehicleSpawner.getSpawnedCount(certType)
+
+            if currentCount >= maxSpawned then
+                return false, 'Maximum ' .. maxSpawned .. ' ' .. tostring(label or certType) .. ' vehicles already spawned!'
+            end
+
+            return true, ''
+        end
+
+        local canSpawn, message = vehicleSpawner.canSpawnVehicle(certType)
+        return canSpawn, message
+    end)
+
+    -- Event: Vehicle spawned - track it
+    RegisterNetEvent('item_exchange:server:vehicleSpawned', function(certType, netId, model, plate)
+        local source = source
+        vehicleSpawner.trackSpawnedVehicle(certType, netId, model, source, plate)
+    end)
+
+    -- Event: Vehicle returned - stop tracking
+    RegisterNetEvent('item_exchange:server:vehicleReturned', function(certType, netId)
+        vehicleSpawner.removeSpawnedVehicle(certType, netId)
+    end)
+
+    RegisterNetEvent('item_exchange:server:vehicleReturnedByNetId', function(netId)
+        vehicleSpawner.removeSpawnedVehicleByNetId(netId)
+    end)
+
+    lib.callback.register('item_exchange:server:returnVehicleByNetId', function(source, netId)
+        local removed, certType = vehicleSpawner.removeSpawnedVehicleByNetId(netId)
+        return removed == true, certType
+    end)
+
+    -- Get available vehicles for player
+    lib.callback.register('item_exchange:server:getAvailableVehicles', function(source, spawnerId)
+        local available = {}
+
+        spawnerId = tonumber(spawnerId)
+        if spawnerId then
+            spawnerId = math.floor(spawnerId)
+            if spawnerId < 1 then
+                spawnerId = nil
+            end
+        end
+
+        local certs = MySQL.query.await('SELECT * FROM vehicle_spawner_certs WHERE enabled = 1 AND (vehicle_spawner_id IS NULL OR vehicle_spawner_id = ?) ORDER BY cert_type ASC, vehicle_spawner_id IS NULL ASC', {
+            spawnerId
+        }) or {}
+
+        if #certs > 0 then
+            local processedCerts = {}
+
+            for _, cert in ipairs(certs) do
+                local certType = cert.cert_type
+
+                if certType and not processedCerts[certType] then
+                    processedCerts[certType] = true
+
+                    if vehicleSpawner.hasPlayerCertification(source, certType) then
+                        local vehicles = MySQL.query.await('SELECT DISTINCT model, label, livery, extras, mod_engine, allowed_jobs FROM vehicle_spawner_vehicles WHERE enabled = 1 AND cert_type = ? AND (vehicle_spawner_id IS NULL OR vehicle_spawner_id = ?) ORDER BY label ASC', {
+                        certType, spawnerId
+                    }) or {}
+
+                        local filteredVehicles = {}
+                        for _, vehicle in ipairs(vehicles) do
+                            if isVehicleAllowedForJob(vehicle.allowed_jobs, source) then
+                                local extras = parseExtrasList(vehicle.extras)
+                                filteredVehicles[#filteredVehicles + 1] = {
+                                    model = vehicle.model,
+                                    label = vehicle.label,
+                                    livery = vehicle.livery,
+                                    extras = extras,
+                                    modEngine = vehicle.mod_engine,
+                                    allowedJobs = vehicle.allowed_jobs or ''
+                                }
+                            end
+                        end
+
+                        if #filteredVehicles > 0 then
+                            available[certType] = {
+                                label = cert.label,
+                                maxSpawned = cert.max_spawned,
+                                vehicles = filteredVehicles
+                            }
+                        end
+                    end
+                end
+            end
+
+            return available
+        end
+
+        if not Config.VehicleSpawner or not Config.VehicleSpawner.vehicles then
+            return available
+        end
+        
+        for certType, config in pairs(Config.VehicleSpawner.vehicles) do
+            -- Check if spawner ID filter is set and matches
+            if spawnerId and config.vehicle_spawner_id and config.vehicle_spawner_id ~= spawnerId then
+                goto continue
+            end
+            
+            if vehicleSpawner.hasPlayerCertification(source, certType) then
+                available[certType] = config
+            end
+            
+            ::continue::
+        end
+        
+        return available
+    end)
+end

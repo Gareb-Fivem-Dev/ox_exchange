@@ -3,6 +3,7 @@ game 'gta5'
 lua54 'yes'
 
 description 'Configurable ox_lib item exchange menu'
+author 'Gareb - Torrid RP'
 
 ui_page 'web/index.html'
 
@@ -17,7 +18,9 @@ client_scripts {
 
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
-    'server.lua'
+    'server.lua',
+    "@AdvancedParking/fixDeleteVehicle.lua",
+    "@AdvancedParking/handleAttachedEntities.lua",
 }
 
 files {

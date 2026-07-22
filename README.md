@@ -4,10 +4,33 @@ A configurable FiveM item exchange and item buyer resource built for `ox_lib`, `
 
 Players interact with database-managed peds to either trade one item for another or sell items for money. Admins can manage peds, trades, and buyer offers in game through the included web UI, so you do not need to restart the resource every time you add or change an offer.
 
+## Version
+
+- Current release: **v1.5**
+- Baseline release: **v1.0**
+
+See `CHANGELOG.md` for full version history.
+
+## v1.5 Highlights
+
+- Vehicle Spawner system with dedicated `vehicle_spawner` peds.
+- Vehicle Spawner admin support in `/exchange` and `/vehicleadmin` (config-controlled).
+- Vehicle licensing/certification menu filtering by player certification and spawner assignment.
+- Per-vehicle job lock support (`allowed_jobs`) even when multiple jobs can access the same ped.
+- Per-vehicle customization from admin: `livery`, `extras`, and `engine mod`.
+- Per-ped vehicle spawn coordinates (`spawn_x`, `spawn_y`, `spawn_z`, `spawn_w`) from Ped Admin.
+- Vehicle preview flow with menu exit + `Press E` return prompt.
+- Return Vehicle menu option with tracked count removal and startup count reset.
+- Buyer/Trader QoL updates: missing-item disabled button and amount auto-fill.
+- New ped types: `decoration` and `export`.
+
+## v1.0 Documentation (Original)
+
 ## Features
 
 - Database-managed trader peds for item-for-item exchanges.
 - Database-managed buyer peds for selling player items for cash or money items.
+- Optional map blips per ped with a FiveM blip sprite selector in `/pedadmin`.
 - In-game admin menus for adding, editing, moving, enabling, disabling, and deleting peds and offers.
 - Separate Trader ID and Buyer ID groups, so different peds can show different menus.
 - Automatic database table creation and optional config-based seeding.
@@ -118,7 +141,7 @@ The ped admin menu lets you:
 
 - Add trader or buyer peds.
 - Use your current player position for ped coordinates.
-- Edit ped model, group ID, target label, target icon, scenario, and menu title.
+- Edit ped model, group ID, target label, target icon, scenario, menu title, and optional map blip.
 - Teleport to existing peds.
 - Enable or disable peds.
 - Delete peds from the database.
@@ -140,6 +163,8 @@ The old config seed format is still supported if you want to prefill the databas
     targetLabel = 'Trade Ingots',
     targetIcon = 'fa-solid fa-hammer',
     menuTitle = 'Ingot Exchange',
+    blipEnabled = true,
+    blipSprite = 605,
     trader = 2
 }
 ```
@@ -161,6 +186,8 @@ The old config seed format is still supported if you want to prefill the databas
     targetLabel = 'Sell Ingots',
     targetIcon = 'fa-solid fa-dollar-sign',
     menuTitle = 'Ingot Buyer',
+    blipEnabled = true,
+    blipSprite = 351,
     buyer = 1
 }
 ```

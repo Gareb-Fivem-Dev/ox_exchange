@@ -1,5 +1,9 @@
 local exchangePeds = {}
+local exchangeBlips = {}
+local exchangeTargetZones = {}
 local configuredPeds = {}
+local previewVehicle = nil
+local previewActive = false
 
 local function getTraderPeds()
     return configuredPeds
@@ -47,6 +51,357 @@ local function getBuyerFilter(trader)
     end
 
     return trader.buyer or trader.buyers
+end
+
+local function getVehicleSpawnerFilter(trader)
+    if not trader then
+        return nil
+    end
+
+    return trader.vehicle_spawner or trader.vehicleSpawner
+end
+
+local function nonEmpty(value, fallback)
+    if value == nil or tostring(value) == '' then
+        return fallback
+    end
+
+    return value
+end
+
+local function getPedBlipLabel(trader)
+    return nonEmpty(trader.menuTitle, nonEmpty(trader.targetLabel, trader.type == 'vehicle_spawner' and 'Vehicle Spawner' or (trader.buyer and 'Item Buyer' or Config.Menu.title)))
+end
+
+local function clearPreviewVehicle(showMessage)
+    if previewVehicle and DoesEntityExist(previewVehicle) then
+        SetEntityAsMissionEntity(previewVehicle, true, true)
+        DeleteVehicle(previewVehicle)
+        DeleteEntity(previewVehicle)
+    end
+
+    previewVehicle = nil
+    previewActive = false
+
+    if lib and lib.hideTextUI then
+        pcall(function()
+            lib.hideTextUI()
+        end)
+    end
+
+    if showMessage then
+        lib.notify({
+            description = 'Preview vehicle returned.',
+            type = 'inform'
+        })
+    end
+end
+
+CreateThread(function()
+    while true do
+        if previewActive then
+            if not previewVehicle or not DoesEntityExist(previewVehicle) then
+                clearPreviewVehicle(false)
+                Wait(250)
+            else
+                if lib and lib.showTextUI then
+                    lib.showTextUI('[E] Return Preview Vehicle')
+                end
+
+                if IsControlJustReleased(0, 38) then
+                    clearPreviewVehicle(true)
+                    Wait(250)
+                else
+                    Wait(0)
+                end
+            end
+        else
+            Wait(500)
+        end
+    end
+end)
+
+local function applyVehicleCustomization(veh, vehicle)
+    SetVehicleModKit(veh, 0)
+
+    if vehicle.livery ~= nil then
+        local livery = math.floor(tonumber(vehicle.livery) or -1)
+        if livery >= 0 then
+            SetVehicleLivery(veh, livery)
+            SetVehicleMod(veh, 48, livery, false)
+        end
+    end
+
+    if vehicle.modEngine ~= nil then
+        local engineMod = math.floor(tonumber(vehicle.modEngine) or -1)
+        if engineMod >= 0 and engineMod <= 4 then
+            SetVehicleMod(veh, 11, engineMod, false)
+        end
+    end
+
+    if type(vehicle.extras) == 'table' and #vehicle.extras > 0 then
+        for extraId = 0, 30 do
+            if DoesExtraExist(veh, extraId) then
+                SetVehicleExtra(veh, extraId, true)
+            end
+        end
+
+        for _, extraId in ipairs(vehicle.extras) do
+            local normalizedExtraId = math.floor(tonumber(extraId) or -1)
+            if normalizedExtraId >= 0 and DoesExtraExist(veh, normalizedExtraId) then
+                SetVehicleExtra(veh, normalizedExtraId, false)
+            end
+        end
+    end
+end
+
+local function getVehicleSpawnPoint(ped)
+    local playerPed = PlayerPedId()
+    local playerCoords = GetEntityCoords(playerPed)
+    local spawnCoords = ped.spawnCoords or ped.coords or playerCoords
+    local heading = (ped.spawnCoords and tonumber(ped.spawnCoords.w))
+        or (ped.coords and tonumber(ped.coords.w))
+        or GetEntityHeading(playerPed)
+
+    return playerPed, spawnCoords, heading
+end
+
+local function spawnSelectedVehicle(ped, certType, vehicle, isPreview)
+    local playerPed, spawnCoords, heading = getVehicleSpawnPoint(ped)
+
+    lib.requestModel(joaat(vehicle.model))
+    local veh = CreateVehicle(joaat(vehicle.model), spawnCoords.x or spawnCoords[1], spawnCoords.y or spawnCoords[2], spawnCoords.z or spawnCoords[3], heading, true, false)
+
+    if not veh then
+        lib.notify({
+            description = 'Failed to spawn vehicle!',
+            type = 'error'
+        })
+        SetModelAsNoLongerNeeded(joaat(vehicle.model))
+        return
+    end
+
+    applyVehicleCustomization(veh, vehicle)
+    SetVehicleOnGroundProperly(veh)
+    TaskWarpPedIntoVehicle(playerPed, veh, -1)
+
+    if isPreview then
+        clearPreviewVehicle(false)
+        previewVehicle = veh
+        previewActive = true
+        lib.notify({
+            description = 'Preview spawned. Press E to return it.',
+            type = 'inform'
+        })
+    else
+        local plate = GetVehicleNumberPlateText(veh)
+        local netId = VehToNet(veh)
+        exports.wasabi_carlock:GiveKey(plate)
+        exports["lc_fuel"]:SetFuel(veh, 100)
+
+        TriggerServerEvent('item_exchange:server:vehicleSpawned', certType, netId, vehicle.model, plate)
+        lib.notify({
+            description = 'Vehicle spawned!',
+            type = 'success'
+        })
+    end
+
+    SetModelAsNoLongerNeeded(joaat(vehicle.model))
+end
+
+local function getVehicleReturnDistance()
+    local configured = Config.VehicleSpawner and (Config.VehicleSpawner.returnDistance or Config.VehicleSpawner.proximityReturnDistance)
+    local fallback = Config.ProximityReturnDistance or 20.0
+    return tonumber(configured or fallback) or 20.0
+end
+
+local function getVehicleDisplayName(veh, fallbackLabel)
+    local modelHash = GetEntityModel(veh)
+    local modelName = GetDisplayNameFromVehicleModel(modelHash)
+
+    if modelName and modelName ~= '' then
+        local label = GetLabelText(modelName)
+        if label and label ~= '' and label ~= 'NULL' then
+            return label
+        end
+    end
+
+    return fallbackLabel or modelName or 'Unknown Vehicle'
+end
+
+local function findNearestAllowedVehicle(allowedByHash)
+    local playerPed = PlayerPedId()
+    local playerCoords = GetEntityCoords(playerPed)
+    local maxDistance = getVehicleReturnDistance()
+    local nearestVeh = 0
+    local nearestDistance = maxDistance + 0.001
+
+    for _, veh in ipairs(GetGamePool('CVehicle')) do
+        if DoesEntityExist(veh) then
+            local modelHash = GetEntityModel(veh)
+            if allowedByHash[modelHash] then
+                local vehCoords = GetEntityCoords(veh)
+                local distance = #(playerCoords - vehCoords)
+                if distance < nearestDistance then
+                    nearestDistance = distance
+                    nearestVeh = veh
+                end
+            end
+        end
+    end
+
+    return nearestVeh
+end
+
+local function returnCurrentVehicleFromMenu(allowedByHash)
+    clearPreviewVehicle(false)
+
+    local playerPed = PlayerPedId()
+    local veh = GetVehiclePedIsIn(playerPed, false)
+    if veh == 0 then
+        veh = findNearestAllowedVehicle(allowedByHash)
+    else
+        if GetPedInVehicleSeat(veh, -1) ~= playerPed then
+            lib.notify({
+                description = 'You must be the driver to return this vehicle.',
+                type = 'error'
+            })
+            return
+        end
+    end
+
+    if veh == 0 then
+        lib.notify({
+            description = 'No allowed vehicle found nearby to return.',
+            type = 'error'
+        })
+        return
+    end
+
+    local modelHash = GetEntityModel(veh)
+    local allowedLabel = allowedByHash[modelHash]
+
+    if not allowedLabel then
+        lib.notify({
+            description = 'This vehicle is not in this spawner\'s return list.',
+            type = 'error'
+        })
+        return
+    end
+
+    if previewVehicle and veh == previewVehicle then
+        clearPreviewVehicle(true)
+        return
+    end
+
+    local plate = (GetVehicleNumberPlateText(veh) or ''):gsub('^%s*(.-)%s*$', '%1')
+    local displayName = getVehicleDisplayName(veh, allowedLabel)
+
+    local confirm = lib.alertDialog({
+        header = 'Return Vehicle',
+        content = ('Vehicle: %s\nPlate: %s\n\nReturn this vehicle?'):format(displayName, plate ~= '' and plate or 'Unknown'),
+        centered = true,
+        cancel = true
+    })
+
+    if confirm ~= 'confirm' then
+        return
+    end
+
+    local netId = VehToNet(veh)
+    local removed = lib.callback.await('item_exchange:server:returnVehicleByNetId', false, netId)
+
+    if not removed then
+        lib.notify({
+            description = 'This vehicle is not tracked as spawned. Return cancelled.',
+            type = 'error'
+        })
+        return
+    end
+
+    SetEntityAsMissionEntity(veh, true, true)
+    DeleteVehicle(veh)
+    DeleteEntity(veh)
+
+    lib.notify({
+        description = 'Vehicle returned. Spawn count updated.',
+        type = 'success'
+    })
+end
+
+local function splitAccessList(value)
+    local list = {}
+
+    for token in tostring(value or ''):gmatch('[^,%s]+') do
+        list[#list + 1] = token:lower()
+    end
+
+    return list
+end
+
+local function listContains(list, value)
+    value = tostring(value or ''):lower()
+
+    if value == '' then
+        return false
+    end
+
+    for _, entry in ipairs(list) do
+        if entry == value then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function getPlayerJobData()
+    if GetResourceState('qbx_core') == 'started' then
+        local ok, playerData = pcall(function()
+            return exports.qbx_core:GetPlayerData()
+        end)
+
+        if ok and playerData and playerData.job then
+            return playerData.job
+        end
+    end
+
+    if GetResourceState('qb-core') == 'started' then
+        local ok, playerData = pcall(function()
+            local QBCore = exports['qb-core']:GetCoreObject()
+            return QBCore.Functions.GetPlayerData()
+        end)
+
+        if ok and playerData and playerData.job then
+            return playerData.job
+        end
+    end
+
+    local stateJob = LocalPlayer and LocalPlayer.state and LocalPlayer.state.job
+    if stateJob then
+        return stateJob
+    end
+
+    return nil
+end
+
+local function canUseVehicleSpawnerTarget(trader)
+    local allowedJobs = splitAccessList(trader.targetJobs)
+    local allowedJobTypes = splitAccessList(trader.targetJobTypes)
+
+    if #allowedJobs == 0 and #allowedJobTypes == 0 then
+        return true
+    end
+
+    local job = getPlayerJobData()
+    if not job then
+        return false
+    end
+
+    local jobName = job.name or job.id or job.label
+    local jobType = job.type or job.jobType or job.category
+
+    return listContains(allowedJobs, jobName) or listContains(allowedJobTypes, jobType)
 end
 
 local function openWebExchangeMenu(trader)
@@ -150,6 +505,16 @@ RegisterNUICallback('trade', function(data, cb)
     cb({ ok = true })
 end)
 
+RegisterNetEvent('item_exchange:client:tradeCompleted', function(costItem, costCount, receiveItem, receiveCount)
+    SendNUIMessage({
+        action = 'tradeCompleted',
+        costItem = costItem,
+        costCount = costCount,
+        receiveItem = receiveItem,
+        receiveCount = receiveCount
+    })
+end)
+
 RegisterNUICallback('buyerSell', function(data, cb)
     local index = tonumber(data.index)
     local amount = math.floor(tonumber(data.amount) or 0)
@@ -166,6 +531,14 @@ RegisterNUICallback('buyerSell', function(data, cb)
 
     TriggerServerEvent('item_exchange:server:sellBuyerItem', index, amount)
     cb({ ok = true })
+end)
+
+RegisterNetEvent('item_exchange:client:buyerSold', function(index, itemCount)
+    SendNUIMessage({
+        action = 'buyerSold',
+        index = index,
+        itemCount = itemCount
+    })
 end)
 
 RegisterNetEvent('item_exchange:client:selectTrade', function(trade)
@@ -309,6 +682,26 @@ local function openPedAdminMenu()
     })
 end
 
+local function openVehicleSpawnerAdminMenu()
+    local data = lib.callback.await('item_exchange:server:getVehicleAdminData', false)
+
+    if not data then
+        lib.notify({
+            description = 'You do not have permission to use this menu.',
+            type = 'error'
+        })
+        return
+    end
+
+    SetNuiFocus(true, true)
+    SendNUIMessage({
+        action = 'openVehicleAdmin',
+        title = 'Vehicle Spawner Admin',
+        certs = data.certs,
+        vehicles = data.vehicles
+    })
+end
+
 local function openExchangeAdminLauncher(access)
     local options = {}
 
@@ -336,6 +729,15 @@ local function openExchangeAdminLauncher(access)
             description = ('Open /%s'):format(Config.PedAdmin.command),
             icon = 'user-gear',
             onSelect = openPedAdminMenu
+        }
+    end
+
+    if access and access.vehicles then
+        options[#options + 1] = {
+            title = 'Vehicle Spawner Admin',
+            description = ('Open /%s'):format(Config.VehicleSpawnerAdmin.command),
+            icon = 'fa-solid fa-car',
+            onSelect = openVehicleSpawnerAdminMenu
         }
     end
 
@@ -514,6 +916,36 @@ RegisterNUICallback('pedAdminUseCurrentCoords', function(_, cb)
     })
 end)
 
+RegisterNUICallback('vehicleAdminAddCert', function(data, cb)
+    TriggerServerEvent('item_exchange:server:vehicleAdminAddCert', data)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('vehicleAdminAddVehicle', function(data, cb)
+    TriggerServerEvent('item_exchange:server:vehicleAdminAddVehicle', data)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('vehicleAdminDeleteCert', function(data, cb)
+    TriggerServerEvent('item_exchange:server:vehicleAdminDeleteCert', data.id)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('vehicleAdminDeleteVehicle', function(data, cb)
+    TriggerServerEvent('item_exchange:server:vehicleAdminDeleteVehicle', data.id)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('vehicleAdminToggleCert', function(data, cb)
+    TriggerServerEvent('item_exchange:server:vehicleAdminToggleCert', data.id)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('vehicleAdminToggleVehicle', function(data, cb)
+    TriggerServerEvent('item_exchange:server:vehicleAdminToggleVehicle', data.id)
+    cb({ ok = true })
+end)
+
 local function openOxAdminMenu()
     local trades = lib.callback.await('item_exchange:server:getAdminTrades', false)
 
@@ -560,7 +992,13 @@ RegisterNetEvent('item_exchange:client:openBuyerAdminMenu', openBuyerAdminMenu)
 
 RegisterNetEvent('item_exchange:client:openPedAdminMenu', openPedAdminMenu)
 
+RegisterNetEvent('item_exchange:client:openVehicleSpawnerAdminMenu', openVehicleSpawnerAdminMenu)
+
 RegisterNetEvent('item_exchange:client:openExchangeAdminLauncher', openExchangeAdminLauncher)
+
+RegisterNetEvent('item_exchange:client:refreshVehicleAdmin', function()
+    openVehicleSpawnerAdminMenu()
+end)
 
 RegisterNetEvent('item_exchange:client:adminAddTrade', function()
     local input = lib.inputDialog('Add Trade', {
@@ -634,16 +1072,166 @@ end)
 local function deleteExchangePeds()
     for _, exchangePed in ipairs(exchangePeds) do
         if DoesEntityExist(exchangePed) then
-            exports.ox_target:removeLocalEntity(exchangePed)
+            -- Only remove target if it was added (non-decoration peds)
+            pcall(function()
+                exports.ox_target:removeLocalEntity(exchangePed)
+            end)
             DeleteEntity(exchangePed)
         end
     end
 
     exchangePeds = {}
+
+    for _, zoneId in ipairs(exchangeTargetZones) do
+        pcall(function()
+            exports.ox_target:removeZone(zoneId)
+        end)
+    end
+
+    exchangeTargetZones = {}
+end
+
+local function openVehicleSpawnerMenu(ped)
+    local spawnerId = getVehicleSpawnerFilter(ped)
+    local available = lib.callback.await('item_exchange:server:getAvailableVehicles', false, spawnerId)
+
+    if not available or next(available) == nil then
+        lib.notify({
+            description = 'You don\'t have any vehicle certifications!',
+            type = 'error'
+        })
+        return
+    end
+
+    local options = {}
+    local allowedByHash = {}
+
+    for _, config in pairs(available) do
+        for _, vehicle in ipairs(config.vehicles or {}) do
+            local modelName = tostring(vehicle.model or '')
+            if modelName ~= '' then
+                allowedByHash[joaat(modelName)] = vehicle.label or modelName
+            end
+        end
+    end
+
+    table.insert(options, {
+        id = 'return_vehicle',
+        title = 'Return Vehicle',
+        description = 'Return current or nearest allowed vehicle (with confirmation)',
+        icon = 'rotate-left',
+        onSelect = function()
+            returnCurrentVehicleFromMenu(allowedByHash)
+        end
+    })
+
+    for certType, config in pairs(available) do
+        for _, vehicle in ipairs(config.vehicles or {}) do
+            table.insert(options, {
+                id = certType .. '_' .. vehicle.model .. '_spawn',
+                title = vehicle.label,
+                description = 'Certification: ' .. config.label,
+                icon = 'car',
+                onSelect = function()
+                    clearPreviewVehicle(false)
+
+                    local canSpawn, message = lib.callback.await('item_exchange:server:canSpawnVehicle', false, certType, config.maxSpawned, config.label)
+                    if not canSpawn then
+                        lib.notify({
+                            description = message,
+                            type = 'error'
+                        })
+                        return
+                    end
+
+                    spawnSelectedVehicle(ped, certType, vehicle, false)
+                end
+            })
+
+            -- table.insert(options, {
+            --     id = certType .. '_' .. vehicle.model .. '_preview',
+            --     title = 'Preview ' .. vehicle.label,
+            --     description = 'Exit menu, preview vehicle, then press E to return',
+            --     icon = 'eye',
+            --     onSelect = function()
+            --         spawnSelectedVehicle(ped, certType, vehicle, true)
+            --     end
+            -- })
+        end
+    end
+
+    if #options < 1 then
+        lib.notify({
+            description = 'You don\'t have any vehicles available at this spawner.',
+            type = 'error'
+        })
+        return
+    end
+
+    local contextId = ('item_exchange_vehicle_spawner_%s'):format(ped.index or 'menu')
+
+    lib.registerContext({
+        id = contextId,
+        title = ped.menuTitle or ped.targetLabel or 'Vehicle Spawner',
+        options = options
+    })
+
+    lib.showContext(contextId)
+end
+
+local function addPedBlip(trader)
+    if not trader.blipEnabled then
+        return
+    end
+
+    local blip = AddBlipForCoord(trader.coords.x, trader.coords.y, trader.coords.z)
+    SetBlipSprite(blip, tonumber(trader.blipSprite) or 280)
+    SetBlipDisplay(blip, 4)
+    SetBlipScale(blip, 0.7)
+    SetBlipColour(blip, trader.buyer and 2 or 5)
+    SetBlipAsShortRange(blip, true)
+    BeginTextCommandSetBlipName('STRING')
+    AddTextComponentString(getPedBlipLabel(trader))
+    EndTextCommandSetBlipName(blip)
+    exchangeBlips[#exchangeBlips + 1] = blip
+end
+
+local function addTraderBuyerLocationTarget(trader)
+    local zoneId = exports.ox_target:addSphereZone({
+        coords = vec3(trader.coords.x, trader.coords.y, trader.coords.z),
+        radius = 1.5,
+        debug = false,
+        options = {
+            {
+                label = trader.targetLabel,
+                icon = trader.targetIcon,
+                onSelect = function()
+                    if trader.buyer then
+                        openBuyerMenu(trader)
+                        return
+                    end
+
+                    openExchangeMenu(trader)
+                end
+            }
+        }
+    })
+
+    if zoneId then
+        exchangeTargetZones[#exchangeTargetZones + 1] = zoneId
+    end
 end
 
 local function spawnExchangePed(trader)
     if not trader.enabled then
+        return
+    end
+
+    local isTraderBuyer = trader.type ~= 'decoration' and trader.type ~= 'export' and trader.type ~= 'vehicle_spawner'
+
+    if trader.showPed == false and isTraderBuyer then
+        addTraderBuyerLocationTarget(trader)
+        addPedBlip(trader)
         return
     end
 
@@ -660,20 +1248,56 @@ local function spawnExchangePed(trader)
         TaskStartScenarioInPlace(exchangePed, trader.scenario, 0, true)
     end
 
-    exports.ox_target:addLocalEntity(exchangePed, {
-        {
-            label = trader.targetLabel,
-            icon = trader.targetIcon,
-            onSelect = function()
-                if trader.buyer then
-                    openBuyerMenu(trader)
-                    return
+    if trader.type == 'vehicle_spawner' then
+        exports.ox_target:addLocalEntity(exchangePed, {
+            {
+                name = ('item_exchange_vehicle_spawner_%s'):format(trader.index or getVehicleSpawnerFilter(trader) or 'ped'),
+                label = nonEmpty(trader.menuTitle, nonEmpty(trader.targetLabel, 'Vehicle Spawner')),
+                icon = nonEmpty(trader.targetIcon, 'fa-solid fa-car'),
+                canInteract = function()
+                    return canUseVehicleSpawnerTarget(trader)
+                end,
+                onSelect = function()
+                    openVehicleSpawnerMenu(trader)
                 end
+            }
+        })
+    elseif trader.type == 'export' then
+        exports.ox_target:addLocalEntity(exchangePed, {
+            {
+                label = trader.targetLabel,
+                icon = trader.targetIcon,
+                onSelect = function()
+                    if trader.exportSide == 'server' then
+                        TriggerServerEvent('item_exchange:server:triggerExportPed', trader.index)
+                    else
+                        local resource = trader.exportResource
+                        local exportName = trader.exportName
+                        if resource and resource ~= '' and exportName and exportName ~= '' then
+                            exports[resource][exportName]()
+                        end
+                    end
+                end
+            }
+        })
+    elseif trader.type ~= 'decoration' then
+        exports.ox_target:addLocalEntity(exchangePed, {
+            {
+                label = trader.targetLabel,
+                icon = trader.targetIcon,
+                onSelect = function()
+                    if trader.buyer then
+                        openBuyerMenu(trader)
+                        return
+                    end
 
-                openExchangeMenu(trader)
-            end
-        }
-    })
+                    openExchangeMenu(trader)
+                end
+            }
+        })
+    end
+
+    addPedBlip(trader)
 
     SetModelAsNoLongerNeeded(joaat(trader.model))
 end
@@ -695,6 +1319,14 @@ end
 
 local function spawnConfiguredPeds()
     deleteExchangePeds()
+
+    for _, blip in ipairs(exchangeBlips) do
+        if DoesBlipExist(blip) then
+            RemoveBlip(blip)
+        end
+    end
+
+    exchangeBlips = {}
 
     for _, trader in ipairs(getTraderPeds()) do
         spawnExchangePed(trader)
@@ -724,6 +1356,16 @@ AddEventHandler('onResourceStop', function(resourceName)
     end
 
     deleteExchangePeds()
+
+    for _, blip in ipairs(exchangeBlips) do
+        if DoesBlipExist(blip) then
+            RemoveBlip(blip)
+        end
+    end
+
+    exchangeBlips = {}
+
+    clearPreviewVehicle(false)
 
     SetNuiFocus(false, false)
 end)

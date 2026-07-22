@@ -36,6 +36,12 @@ Config.PedAdmin = {
     ace = 'command.pedadmin'
 }
 
+Config.VehicleSpawnerAdmin = {
+    enabled = false,
+    command = 'vehicleadmin',
+    ace = 'command.vehicleadmin'
+}
+
 Config.Exchange = {
     command = 'exchange'
 }
@@ -45,10 +51,67 @@ Config.Exchange = {
 Config.BuyerMoneyItem = 'money'
 Config.BuyerQbMoneyAccount = 'cash'
 
+-- Vehicle Spawner System Configuration
+-- Create vehicle spawner peds with ox_target to allow players to spawn vehicles based on their licenses
+Config.VehicleSpawner = {
+    enabled = true,
+    clearOnStart = false, -- Clear spawned vehicle tracking on resource start
+    
+    -- Vehicle certification groups - organize vehicles by certification type
+    -- Each certification can optionally have a vehicle_spawner_id to limit it to specific peds
+    -- If vehicle_spawner_id is not set, the vehicle is available to all vehicle_spawner peds
+    vehicles = {
+        heat = {
+            label = "Speed Certification",
+            maxSpawned = 2,
+            vehicle_spawner_id = 1, -- Optional: only show to vehicle_spawner peds with ID 1
+            vehicles = {
+                { model = "nkbanshee3", label = "Banshee GTS" },
+                { model = "nkparagon3", label = "Paragon S" },
+                { model = "nkcomet6", label = "Comet" },
+                { model = "nkjester4", label = "Jester R" }
+            }
+        },
+        moto = {
+            label = "Motorcycle Certification",
+            maxSpawned = 3,
+            vehicle_spawner_id = 1,
+            vehicles = {
+                { model = "nkshinobi", label = "Police Bike" }
+            }
+        },
+        k9 = {
+            label = "K9 Certification",
+            maxSpawned = 2,
+            vehicle_spawner_id = 2, -- Different spawner ID - separate ped can show these
+            vehicles = {
+                { model = "nkbisonxl", label = "K9 Bison XL" }
+            }
+        },
+        air = {
+            label = "Aircraft Certification",
+            maxSpawned = 1,
+            vehicle_spawner_id = 2,
+            vehicles = {
+                { model = "polmav3", label = "Police Helicopter" }
+            }
+        }
+    }
+}
+
 -- Optional seed data only. Use /pedadmin in game to add, edit, and delete peds.
 -- These entries are inserted only when the ped database table is empty and
 -- Config.PedDatabase.seedFromConfig is true.
-Config.Peds = {}
+Config.Peds = {
+    -- Decoration peds (no target interaction)
+    -- {
+    --     type = 'decoration',
+    --     model = 'a_m_o_genstreet_01',
+    --     coords = vec4(160.22, 6651.97, 31.67, 125.09),
+    --     scenario = 'WORLD_HUMAN_STAND_IMPATIENT'
+    -- },
+
+}
 
 -- These buyer entries seed the database when Config.BuyerDatabase.seedFromConfig is true
 -- and the buyer database table is empty. After that, use /buyeradmin to manage buyers.
