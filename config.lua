@@ -37,7 +37,7 @@ Config.PedAdmin = {
 }
 
 Config.VehicleSpawnerAdmin = {
-    enabled = false,
+    enabled = true,
     command = 'vehicleadmin',
     ace = 'command.vehicleadmin'
 }
@@ -55,47 +55,13 @@ Config.BuyerQbMoneyAccount = 'cash'
 -- Create vehicle spawner peds with ox_target to allow players to spawn vehicles based on their licenses
 Config.VehicleSpawner = {
     enabled = true,
-    clearOnStart = false, -- Clear spawned vehicle tracking on resource start
+    clearOnStart = true, -- Clear spawned vehicle tracking on resource start
     
     -- Vehicle certification groups - organize vehicles by certification type
     -- Each certification can optionally have a vehicle_spawner_id to limit it to specific peds
     -- If vehicle_spawner_id is not set, the vehicle is available to all vehicle_spawner peds
     vehicles = {
-        heat = {
-            label = "Speed Certification",
-            maxSpawned = 2,
-            vehicle_spawner_id = 1, -- Optional: only show to vehicle_spawner peds with ID 1
-            vehicles = {
-                { model = "nkbanshee3", label = "Banshee GTS" },
-                { model = "nkparagon3", label = "Paragon S" },
-                { model = "nkcomet6", label = "Comet" },
-                { model = "nkjester4", label = "Jester R" }
-            }
-        },
-        moto = {
-            label = "Motorcycle Certification",
-            maxSpawned = 3,
-            vehicle_spawner_id = 1,
-            vehicles = {
-                { model = "nkshinobi", label = "Police Bike" }
-            }
-        },
-        k9 = {
-            label = "K9 Certification",
-            maxSpawned = 2,
-            vehicle_spawner_id = 2, -- Different spawner ID - separate ped can show these
-            vehicles = {
-                { model = "nkbisonxl", label = "K9 Bison XL" }
-            }
-        },
-        air = {
-            label = "Aircraft Certification",
-            maxSpawned = 1,
-            vehicle_spawner_id = 2,
-            vehicles = {
-                { model = "polmav3", label = "Police Helicopter" }
-            }
-        }
+
     }
 }
 

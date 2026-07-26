@@ -1802,10 +1802,9 @@ RegisterNetEvent('item_exchange:server:vehicleAdminAddCert', function(data)
 
     MySQL.insert.await('INSERT INTO vehicle_spawner_certs (vehicle_spawner_id, cert_type, label, max_spawned) VALUES (?, ?, ?, ?)', {
         spawnerId, certType, label, maxSpawned
-    }, function()
-        notify(source, 'Certification added', 'success')
-        TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
-    end)
+    })
+    notify(source, 'Certification added', 'success')
+    TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
 end)
 
 RegisterNetEvent('item_exchange:server:vehicleAdminAddVehicle', function(data)
@@ -1850,10 +1849,94 @@ RegisterNetEvent('item_exchange:server:vehicleAdminAddVehicle', function(data)
 
     MySQL.insert.await('INSERT INTO vehicle_spawner_vehicles (vehicle_spawner_id, cert_type, model, label, livery, extras, mod_engine, allowed_jobs) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
         spawnerId, certType, model, label, livery, extrasJson, modEngine, allowedJobs
-    }, function()
-        notify(source, 'Vehicle added', 'success')
-        TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
-    end)
+    })
+    notify(source, 'Vehicle added', 'success')
+    TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
+end)
+
+RegisterNetEvent('item_exchange:server:vehicleAdminUpdateCert', function(data)
+    local source = source
+    if not isVehicleSpawnerAdmin(source) then
+        return
+    end
+
+    local id = tonumber(data.id)
+    if not id then
+        return
+    end
+
+    local certType = tostring(data.cert_type or ''):lower():gsub('%s+', '')
+    local label = tostring(data.label or '')
+    local maxSpawned = math.floor(tonumber(data.max_spawned) or 2)
+    local rawSpawnerId = tonumber(data.vehicle_spawner_id)
+    local spawnerId = rawSpawnerId and math.floor(rawSpawnerId) or nil
+
+    if spawnerId and spawnerId < 1 then
+        spawnerId = nil
+    end
+
+    if certType == '' or label == '' or maxSpawned < 1 then
+        notify(source, 'Invalid certification data', 'error')
+        return
+    end
+
+    MySQL.update.await('UPDATE vehicle_spawner_certs SET cert_type = ?, label = ?, max_spawned = ?, vehicle_spawner_id = ? WHERE id = ?', {
+        certType, label, maxSpawned, spawnerId, id
+    })
+    notify(source, 'Certification updated', 'success')
+    TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
+end)
+
+RegisterNetEvent('item_exchange:server:vehicleAdminUpdateVehicle', function(data)
+    local source = source
+    if not isVehicleSpawnerAdmin(source) then
+        return
+    end
+
+    local id = tonumber(data.id)
+    if not id then
+        return
+    end
+
+    local certType = tostring(data.cert_type or ''):lower():gsub('%s+', '')
+    local model = tostring(data.model or '')
+    local label = tostring(data.label or '')
+    local rawSpawnerId = tonumber(data.vehicle_spawner_id)
+    local spawnerId = rawSpawnerId and math.floor(rawSpawnerId) or nil
+    local livery = tonumber(data.livery)
+    local modEngine = tonumber(data.mod_engine)
+    local allowedJobs = normalizeAccessList(data.allowed_jobs)
+    local extrasList = parseExtrasList(data.extras)
+    local extrasJson = extrasList and json.encode(extrasList) or nil
+
+    if spawnerId and spawnerId < 1 then
+        spawnerId = nil
+    end
+
+    if livery ~= nil then
+        livery = math.floor(livery)
+        if livery < 0 then
+            livery = nil
+        end
+    end
+
+    if modEngine ~= nil then
+        modEngine = math.floor(modEngine)
+        if modEngine < 0 or modEngine > 4 then
+            modEngine = nil
+        end
+    end
+
+    if certType == '' or model == '' or label == '' then
+        notify(source, 'Invalid vehicle data', 'error')
+        return
+    end
+
+    MySQL.update.await('UPDATE vehicle_spawner_vehicles SET cert_type = ?, model = ?, label = ?, vehicle_spawner_id = ?, livery = ?, extras = ?, mod_engine = ?, allowed_jobs = ? WHERE id = ?', {
+        certType, model, label, spawnerId, livery, extrasJson, modEngine, allowedJobs, id
+    })
+    notify(source, 'Vehicle updated', 'success')
+    TriggerClientEvent('item_exchange:client:refreshVehicleAdmin', source)
 end)
 
 RegisterNetEvent('item_exchange:server:vehicleAdminDeleteCert', function(id)

@@ -1076,6 +1076,62 @@ body.is-vehicle-admin .trade-list {
     background: rgba(255, 255, 255, 0.02);
 }
 
+.vehicle-admin-row .delete-confirm {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 8px;
+    border: 2px solid rgba(199, 83, 67, 0.58);
+    border-radius: 4px;
+    background: rgba(129, 37, 30, 0.18);
+    margin-top: 6px;
+}
+
+.vehicle-admin-row .delete-confirm[hidden] {
+    display: none;
+}
+
+.vehicle-admin-row .delete-confirm span {
+    color: #f2d0c9;
+    font: 600 13px 'Segoe UI', Verdana, sans-serif;
+    overflow-wrap: anywhere;
+}
+
+.vehicle-admin-row .delete-confirm .confirm-delete-button {
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 3px;
+    background: #c45e20;
+    color: #fff;
+    font: 600 12px 'Segoe UI', Verdana, sans-serif;
+    cursor: pointer;
+}
+
+.vehicle-admin-row .delete-confirm .cancel-delete-button {
+    padding: 4px 10px;
+    border: 0;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #d2ef8b;
+    font: 600 12px 'Segoe UI', Verdana, sans-serif;
+    cursor: pointer;
+}
+
+.vehicle-admin-form .cert-cancel-button,
+.vehicle-admin-form .vehicle-cancel-button {
+    width: 100%;
+    height: 32px;
+    margin-top: 8px;
+    border: 0;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #d2ef8b;
+    font: 600 14px 'Segoe UI', Verdana, sans-serif;
+    cursor: pointer;
+}
+
 .vehicle-admin-row-info {
     display: flex;
     flex-direction: column;
@@ -1112,6 +1168,8 @@ body.is-vehicle-admin .trade-list {
 .vehicle-admin-row-actions {
     display: flex;
     gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .vehicle-admin-row-actions button {
@@ -1124,6 +1182,12 @@ body.is-vehicle-admin .trade-list {
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.2s;
+}
+
+.vehicle-admin-row-actions .cert-edit-button,
+.vehicle-admin-row-actions .vehicle-edit-button {
+    background: #5d873c;
+    color: #eef4df;
 }
 
 .vehicle-admin-row-actions button:hover {
@@ -1154,6 +1218,17 @@ body.is-vehicle-admin .trade-list {
 .trade-button:active,
 .icon-button:active {
     transform: translateY(1px);
+}
+
+.panel-header-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.minimize-button {
+    font-size: 18px !important;
+    line-height: 1 !important;
 }
 
 @media (max-width: 720px) {

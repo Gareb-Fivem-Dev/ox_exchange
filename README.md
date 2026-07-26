@@ -6,10 +6,18 @@ Players interact with database-managed peds to either trade one item for another
 
 ## Version
 
-- Current release: **v1.5**
+- Current release: **v1.6**
 - Baseline release: **v1.0**
 
 See `CHANGELOG.md` for full version history.
+
+## v1.6 Highlights
+
+- **Admin panel minimize/restore**: Vehicle Admin and Ped Admin panels can be minimized via the header button so admins can walk around in-game. All unsaved form data (certs, vehicles, ped fields, edit state) is preserved and restored when the panel is reopened. The panel can also be reopened via command while minimized without losing state.
+- **Vehicle admin inline edit**: Certs and vehicles in the Vehicle Spawner Admin now have an Edit button on each row that pre-fills the add form for quick inline editing.
+- **Vehicle admin inline delete confirm**: Delete buttons reveal an inline Confirm/Cancel panel instead of using the browser `confirm()` dialog.
+- **Vehicle return context menu**: "Return Vehicle" now opens an ox_lib context menu listing all nearby allowed vehicles with name, plate, and distance. The vehicle you are sitting in appears at the top. Select a vehicle and confirm to return it.
+- **Vehicle admin add fix**: Fixed `vehicleAdminAddCert` and `vehicleAdminAddVehicle` server handlers silently failing due to a `MySQL.insert.await` callback bug.
 
 ## v1.5 Highlights
 
@@ -216,6 +224,25 @@ add_ace group.admin command.pedadmin allow
 ```
 
 Console cannot open the menus. If any admin command is run from the server console, it prints a message telling you to use it in game.
+
+## Vehicle Spawner Admin
+
+Open the vehicle spawner editor with:
+
+```txt
+/vehicleadmin
+```
+
+The vehicle spawner admin menu lets you:
+
+- Add, edit, and delete certifications (licenses) assigned to each spawner.
+- Add, edit, and delete vehicles within each certification.
+- Edit a cert or vehicle inline by clicking the Edit button on its row.
+- Delete entries with an inline Confirm/Cancel panel.
+- Enable or disable certs and vehicles.
+- **Minimize** the panel with the `—` button in the header to walk around in-game, then reopen it without losing unsaved form data.
+
+Each certification has a label, type, and max spawn limit. Vehicles within a cert are what players see in the spawner menu.
 
 ## Managing Trades
 

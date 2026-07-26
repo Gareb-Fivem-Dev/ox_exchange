@@ -8,6 +8,8 @@ author 'Gareb - Torrid RP'
 ui_page 'web/index.html'
 
 shared_scripts {
+    "@AdvancedParking/fixDeleteVehicle.lua",
+    "@AdvancedParking/handleAttachedEntities.lua",
     '@ox_lib/init.lua',
     'config.lua'
 }
@@ -19,8 +21,7 @@ client_scripts {
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
     'server.lua',
-    "@AdvancedParking/fixDeleteVehicle.lua",
-    "@AdvancedParking/handleAttachedEntities.lua",
+
 }
 
 files {

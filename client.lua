@@ -4,6 +4,10 @@ local exchangeTargetZones = {}
 local configuredPeds = {}
 local previewVehicle = nil
 local previewActive = false
+local vehicleAdminMinimized = false
+local cachedVehicleAdminData = nil
+local pedAdminMinimized = false
+local cachedPedAdminData = nil
 
 local function getTraderPeds()
     return configuredPeds
@@ -229,12 +233,11 @@ local function getVehicleDisplayName(veh, fallbackLabel)
     return fallbackLabel or modelName or 'Unknown Vehicle'
 end
 
-local function findNearestAllowedVehicle(allowedByHash)
+local function findAllAllowedVehicles(allowedByHash)
     local playerPed = PlayerPedId()
     local playerCoords = GetEntityCoords(playerPed)
     local maxDistance = getVehicleReturnDistance()
-    local nearestVeh = 0
-    local nearestDistance = maxDistance + 0.001
+    local results = {}
 
     for _, veh in ipairs(GetGamePool('CVehicle')) do
         if DoesEntityExist(veh) then
@@ -242,91 +245,97 @@ local function findNearestAllowedVehicle(allowedByHash)
             if allowedByHash[modelHash] then
                 local vehCoords = GetEntityCoords(veh)
                 local distance = #(playerCoords - vehCoords)
-                if distance < nearestDistance then
-                    nearestDistance = distance
-                    nearestVeh = veh
+                if distance <= maxDistance then
+                    local plate = (GetVehicleNumberPlateText(veh) or ''):gsub('^%s*(.-)%s*$', '%1')
+                    local displayName = getVehicleDisplayName(veh, allowedByHash[modelHash])
+                    results[#results + 1] = {
+                        veh = veh,
+                        label = displayName,
+                        plate = plate ~= '' and plate or 'No Plate',
+                        distance = math.floor(distance + 0.5),
+                        isInVehicle = GetVehiclePedIsIn(playerPed, false) == veh
+                    }
                 end
             end
         end
     end
 
-    return nearestVeh
+    table.sort(results, function(a, b)
+        if a.isInVehicle and not b.isInVehicle then return true end
+        if not a.isInVehicle and b.isInVehicle then return false end
+        return a.distance < b.distance
+    end)
+
+    return results
 end
 
 local function returnCurrentVehicleFromMenu(allowedByHash)
     clearPreviewVehicle(false)
 
     local playerPed = PlayerPedId()
-    local veh = GetVehiclePedIsIn(playerPed, false)
-    if veh == 0 then
-        veh = findNearestAllowedVehicle(allowedByHash)
-    else
-        if GetPedInVehicleSeat(veh, -1) ~= playerPed then
-            lib.notify({
-                description = 'You must be the driver to return this vehicle.',
-                type = 'error'
-            })
-            return
-        end
-    end
+    local vehicles = findAllAllowedVehicles(allowedByHash)
 
-    if veh == 0 then
+    if #vehicles == 0 then
         lib.notify({
-            description = 'No allowed vehicle found nearby to return.',
+            description = 'No allowed vehicles found within return distance.',
             type = 'error'
         })
         return
     end
 
-    local modelHash = GetEntityModel(veh)
-    local allowedLabel = allowedByHash[modelHash]
+    local contextId = 'item_exchange_return_vehicle'
 
-    if not allowedLabel then
-        lib.notify({
-            description = 'This vehicle is not in this spawner\'s return list.',
-            type = 'error'
-        })
-        return
+    local options = {}
+    for i, v in ipairs(vehicles) do
+        local distText = v.isInVehicle and 'You are in this vehicle' or ('~%sm away'):format(v.distance)
+        options[#options + 1] = {
+            id = 'return_' .. i,
+            title = v.label,
+            description = ('Plate: %s | %s'):format(v.plate, distText),
+            icon = v.isInVehicle and 'car-side' or 'car',
+            onSelect = function()
+                local confirm = lib.alertDialog({
+                    header = 'Return Vehicle',
+                    content = ('Return **%s** (Plate: %s)?'):format(v.label, v.plate),
+                    centered = true,
+                    cancel = true
+                })
+
+                if confirm ~= 'confirm' then
+                    return
+                end
+
+                local netId = VehToNet(v.veh)
+                local removed = lib.callback.await('item_exchange:server:returnVehicleByNetId', false, netId)
+
+                if not removed then
+                    lib.notify({
+                        description = 'This vehicle is not tracked as spawned. Return cancelled.',
+                        type = 'error'
+                    })
+                    return
+                end
+
+                SetEntityAsMissionEntity(v.veh, true, true)
+                DeleteVehicle(v.veh)
+                DeleteEntity(v.veh)
+
+                lib.notify({
+                    description = 'Vehicle returned. Spawn count updated.',
+                    type = 'success'
+                })
+            end
+        }
     end
 
-    if previewVehicle and veh == previewVehicle then
-        clearPreviewVehicle(true)
-        return
-    end
-
-    local plate = (GetVehicleNumberPlateText(veh) or ''):gsub('^%s*(.-)%s*$', '%1')
-    local displayName = getVehicleDisplayName(veh, allowedLabel)
-
-    local confirm = lib.alertDialog({
-        header = 'Return Vehicle',
-        content = ('Vehicle: %s\nPlate: %s\n\nReturn this vehicle?'):format(displayName, plate ~= '' and plate or 'Unknown'),
-        centered = true,
-        cancel = true
+    lib.registerContext({
+        id = contextId,
+        title = 'Return Vehicle',
+        description = ('%d vehicle(s) within %sm'):format(#vehicles, getVehicleReturnDistance()),
+        options = options
     })
 
-    if confirm ~= 'confirm' then
-        return
-    end
-
-    local netId = VehToNet(veh)
-    local removed = lib.callback.await('item_exchange:server:returnVehicleByNetId', false, netId)
-
-    if not removed then
-        lib.notify({
-            description = 'This vehicle is not tracked as spawned. Return cancelled.',
-            type = 'error'
-        })
-        return
-    end
-
-    SetEntityAsMissionEntity(veh, true, true)
-    DeleteVehicle(veh)
-    DeleteEntity(veh)
-
-    lib.notify({
-        description = 'Vehicle returned. Spawn count updated.',
-        type = 'success'
-    })
+    lib.showContext(contextId)
 end
 
 local function splitAccessList(value)
@@ -483,6 +492,10 @@ local function openBuyerMenu(trader)
 end
 
 RegisterNUICallback('close', function(_, cb)
+    vehicleAdminMinimized = false
+    cachedVehicleAdminData = nil
+    pedAdminMinimized = false
+    cachedPedAdminData = nil
     SetNuiFocus(false, false)
     cb({ ok = true })
 end)
@@ -664,6 +677,17 @@ local function openBuyerAdminMenu()
 end
 
 local function openPedAdminMenu()
+    if pedAdminMinimized and cachedPedAdminData then
+        pedAdminMinimized = false
+        SetNuiFocus(true, true)
+        SendNUIMessage({
+            action = 'restorePedAdmin',
+            title = 'Ped Admin',
+            peds = cachedPedAdminData.peds
+        })
+        return
+    end
+
     local peds = lib.callback.await('item_exchange:server:getAdminPeds', false)
 
     if not peds then
@@ -674,6 +698,8 @@ local function openPedAdminMenu()
         return
     end
 
+    cachedPedAdminData = { peds = peds }
+    pedAdminMinimized = false
     SetNuiFocus(true, true)
     SendNUIMessage({
         action = 'openPedAdmin',
@@ -683,6 +709,18 @@ local function openPedAdminMenu()
 end
 
 local function openVehicleSpawnerAdminMenu()
+    if vehicleAdminMinimized and cachedVehicleAdminData then
+        vehicleAdminMinimized = false
+        SetNuiFocus(true, true)
+        SendNUIMessage({
+            action = 'restoreVehicleAdmin',
+            title = 'Vehicle Spawner Admin',
+            certs = cachedVehicleAdminData.certs,
+            vehicles = cachedVehicleAdminData.vehicles
+        })
+        return
+    end
+
     local data = lib.callback.await('item_exchange:server:getVehicleAdminData', false)
 
     if not data then
@@ -693,6 +731,8 @@ local function openVehicleSpawnerAdminMenu()
         return
     end
 
+    cachedVehicleAdminData = { certs = data.certs, vehicles = data.vehicles }
+    vehicleAdminMinimized = false
     SetNuiFocus(true, true)
     SendNUIMessage({
         action = 'openVehicleAdmin',
@@ -916,13 +956,29 @@ RegisterNUICallback('pedAdminUseCurrentCoords', function(_, cb)
     })
 end)
 
+RegisterNUICallback('pedAdminMinimize', function(_, cb)
+    pedAdminMinimized = true
+    SetNuiFocus(false, false)
+    cb({ ok = true })
+end)
+
 RegisterNUICallback('vehicleAdminAddCert', function(data, cb)
     TriggerServerEvent('item_exchange:server:vehicleAdminAddCert', data)
     cb({ ok = true })
 end)
 
+RegisterNUICallback('vehicleAdminUpdateCert', function(data, cb)
+    TriggerServerEvent('item_exchange:server:vehicleAdminUpdateCert', data)
+    cb({ ok = true })
+end)
+
 RegisterNUICallback('vehicleAdminAddVehicle', function(data, cb)
     TriggerServerEvent('item_exchange:server:vehicleAdminAddVehicle', data)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('vehicleAdminUpdateVehicle', function(data, cb)
+    TriggerServerEvent('item_exchange:server:vehicleAdminUpdateVehicle', data)
     cb({ ok = true })
 end)
 
@@ -943,6 +999,12 @@ end)
 
 RegisterNUICallback('vehicleAdminToggleVehicle', function(data, cb)
     TriggerServerEvent('item_exchange:server:vehicleAdminToggleVehicle', data.id)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('vehicleAdminMinimize', function(_, cb)
+    vehicleAdminMinimized = true
+    SetNuiFocus(false, false)
     cb({ ok = true })
 end)
 
@@ -997,6 +1059,13 @@ RegisterNetEvent('item_exchange:client:openVehicleSpawnerAdminMenu', openVehicle
 RegisterNetEvent('item_exchange:client:openExchangeAdminLauncher', openExchangeAdminLauncher)
 
 RegisterNetEvent('item_exchange:client:refreshVehicleAdmin', function()
+    if vehicleAdminMinimized then
+        local data = lib.callback.await('item_exchange:server:getVehicleAdminData', false)
+        if data then
+            cachedVehicleAdminData = { certs = data.certs, vehicles = data.vehicles }
+        end
+        return
+    end
     openVehicleSpawnerAdminMenu()
 end)
 
@@ -1066,6 +1135,13 @@ RegisterNetEvent('item_exchange:client:refreshBuyerAdminMenu', function()
 end)
 
 RegisterNetEvent('item_exchange:client:refreshPedAdminMenu', function()
+    if pedAdminMinimized then
+        local peds = lib.callback.await('item_exchange:server:getAdminPeds', false)
+        if peds then
+            cachedPedAdminData = { peds = peds }
+        end
+        return
+    end
     openPedAdminMenu()
 end)
 
@@ -1118,7 +1194,7 @@ local function openVehicleSpawnerMenu(ped)
     table.insert(options, {
         id = 'return_vehicle',
         title = 'Return Vehicle',
-        description = 'Return current or nearest allowed vehicle (with confirmation)',
+        description = 'View and return nearby allowed vehicles',
         icon = 'rotate-left',
         onSelect = function()
             returnCurrentVehicleFromMenu(allowedByHash)
@@ -1366,6 +1442,11 @@ AddEventHandler('onResourceStop', function(resourceName)
     exchangeBlips = {}
 
     clearPreviewVehicle(false)
+
+    vehicleAdminMinimized = false
+    cachedVehicleAdminData = nil
+    pedAdminMinimized = false
+    cachedPedAdminData = nil
 
     SetNuiFocus(false, false)
 end)

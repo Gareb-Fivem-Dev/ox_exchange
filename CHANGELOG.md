@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.6] - 2026-07-26
+
+### Added
+- **Admin panel minimize/restore**: Vehicle Admin and Ped Admin panels can be minimized with the `—` button in the header, allowing admins to walk around in-game without closing the panel. All unsaved form data is preserved across minimize/restore cycles. Panels can also be reopened using the same command while minimized.
+- **Vehicle admin edit buttons**: Licenses (certs) and vehicles in the Vehicle Spawner Admin can now be edited inline via an Edit button on each row. Clicking Edit pre-fills the add form with the entry's current values and changes the button to "Save Changes".
+- **Vehicle admin inline delete confirmation**: Delete buttons now reveal an inline Confirm/Cancel panel directly in the row instead of using the browser `confirm()` dialog.
+- **Vehicle return context menu**: Clicking "Return Vehicle" now opens an ox_lib context menu listing all nearby allowed vehicles with their name, plate, and distance, instead of auto-selecting the nearest one. The vehicle you are currently in is sorted to the top. Selecting a vehicle shows a confirmation dialog before returning.
+- **Vehicle admin update server events**: `vehicleAdminUpdateCert` and `vehicleAdminUpdateVehicle` server events with full validation.
+
+### Changed
+- Vehicle return menu item description updated to reflect the new context menu behavior.
+- Vehicle admin row actions now flex-wrap to accommodate three buttons (Edit, Enable/Disable, Delete).
+
+### Fixed
+- `vehicleAdminAddCert` and `vehicleAdminAddVehicle` server handlers no longer silently swallow results. The `MySQL.insert.await` calls were previously followed by a callback function that was never executed by oxmysql's synchronous API. `notify()` and `TriggerClientEvent` now run after the `.await` call completes.
+- Stray duplicate `end)` removed from the `vehicleAdminAddVehicle` handler in server.lua.
+
 ## [1.5] - 2026-07-22
 
 ### Added

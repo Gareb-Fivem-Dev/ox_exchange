@@ -6,6 +6,7 @@ const title = document.querySelector('#menu-title');
 const headerInfo = document.querySelector('.panel__header > div');
 const tradeList = document.querySelector('#trade-list');
 const closeButton = document.querySelector('#close-button');
+const minimizeButton = document.querySelector('#minimize-button');
 
 const fivemBlipSprites = [
     { id: 1, label: 'Standard' },
@@ -44,6 +45,10 @@ let activeBuyerAdminTab = 'offers';
 let activeVehicleAdminTab = 'licenses';
 let activeBuyerItemFilter = '';
 let buyerSearchQuery = '';
+let vehicleAdminFormCache = null;
+let pedAdminFormCache = null;
+let editingCert = null;
+let editingVehicle = null;
 
 function postNui(eventName, data = {}) {
     return fetch(`https://${resourceName}/${eventName}`, {
@@ -64,6 +69,11 @@ function closeMenu() {
     body.classList.remove('is-vehicle-admin');
     panel.setAttribute('aria-hidden', 'true');
     clearBuyerHeaderSearch();
+    vehicleAdminFormCache = null;
+    pedAdminFormCache = null;
+    editingCert = null;
+    editingVehicle = null;
+    minimizeButton.style.display = 'none';
     postNui('close');
 }
 
@@ -167,6 +177,7 @@ function renderTrades() {
     body.classList.remove('is-buyer');
     body.classList.remove('is-buyer-admin');
     body.classList.remove('is-ped-admin');
+    minimizeButton.style.display = 'none';
     clearBuyerHeaderSearch();
     eyebrow.textContent = '';
     tradeList.className = 'trade-list';
@@ -322,6 +333,7 @@ function renderBuyers() {
     body.classList.remove('is-buyer-admin');
     body.classList.remove('is-ped-admin');
     body.classList.add('is-buyer');
+    minimizeButton.style.display = 'none';
     renderBuyerHeaderSearch();
     eyebrow.textContent = '';
     tradeList.className = 'trade-list buyer-list';
@@ -1151,6 +1163,7 @@ function renderAdmin() {
     body.classList.remove('is-buyer');
     body.classList.remove('is-buyer-admin');
     body.classList.remove('is-ped-admin');
+    minimizeButton.style.display = 'none';
     eyebrow.textContent = '';
     tradeList.className = 'trade-list admin-layout';
 
@@ -1208,6 +1221,7 @@ function renderBuyerAdmin() {
     body.classList.remove('is-buyer');
     body.classList.remove('is-ped-admin');
     body.classList.add('is-buyer-admin');
+    minimizeButton.style.display = 'none';
     eyebrow.textContent = '';
     tradeList.className = 'trade-list admin-layout buyer-admin-layout';
 
@@ -1277,6 +1291,7 @@ function renderPedAdmin() {
     body.classList.remove('is-buyer');
     body.classList.remove('is-buyer-admin');
     body.classList.add('is-ped-admin');
+    minimizeButton.style.display = '';
     eyebrow.textContent = '';
     tradeList.className = 'trade-list admin-layout ped-admin-layout';
 
@@ -1290,6 +1305,140 @@ function renderPedAdmin() {
 
     adminShell.append(createPedAdminForm(editingPed), pedPanel);
     tradeList.replaceChildren(adminShell);
+    restorePedAdminFormState();
+}
+
+function saveVehicleAdminFormState() {
+    const panel = document.querySelector('.panel');
+    if (!panel) return;
+
+    const cache = { tab: activeVehicleAdminTab, editingCert: editingCert, editingVehicle: editingVehicle, certs: {}, vehicles: {} };
+
+    const certSpawnerId = panel.querySelector('.cert-spawner-id-input');
+    const certType = panel.querySelector('.cert-type-input');
+    const certLabel = panel.querySelector('.cert-label-input');
+    const certMaxSpawned = panel.querySelector('.cert-max-spawned-input');
+    if (certSpawnerId || certType || certLabel || certMaxSpawned) {
+        cache.certs = {
+            spawnerId: certSpawnerId?.value || '',
+            type: certType?.value || '',
+            label: certLabel?.value || '',
+            maxSpawned: certMaxSpawned?.value || ''
+        };
+    }
+
+    const certSelect = panel.querySelector('.vehicle-cert-select');
+    const vehicleSpawnerId = panel.querySelector('.vehicle-spawner-id-input');
+    const vehicleModel = panel.querySelector('.vehicle-model-input');
+    const vehicleLabel = panel.querySelector('.vehicle-label-input');
+    const vehicleLivery = panel.querySelector('.vehicle-livery-input');
+    const vehicleExtras = panel.querySelector('.vehicle-extras-input');
+    const vehicleEngine = panel.querySelector('.vehicle-engine-input');
+    const vehicleAllowedJobs = panel.querySelector('.vehicle-allowed-jobs-input');
+    if (certSelect || vehicleModel || vehicleLabel) {
+        cache.vehicles = {
+            certSelect: certSelect?.value || '',
+            spawnerId: vehicleSpawnerId?.value || '',
+            model: vehicleModel?.value || '',
+            label: vehicleLabel?.value || '',
+            livery: vehicleLivery?.value || '',
+            extras: vehicleExtras?.value || '',
+            engine: vehicleEngine?.value || '',
+            allowedJobs: vehicleAllowedJobs?.value || ''
+        };
+    }
+
+    vehicleAdminFormCache = cache;
+}
+
+function restoreVehicleAdminFormState() {
+    if (!vehicleAdminFormCache) return;
+
+    const panel = document.querySelector('.panel');
+    if (!panel) return;
+
+    const cache = vehicleAdminFormCache;
+
+    if (cache.editingCert !== undefined) editingCert = cache.editingCert;
+    if (cache.editingVehicle !== undefined) editingVehicle = cache.editingVehicle;
+
+    if (cache.certs) {
+        const certSpawnerId = panel.querySelector('.cert-spawner-id-input');
+        const certType = panel.querySelector('.cert-type-input');
+        const certLabel = panel.querySelector('.cert-label-input');
+        const certMaxSpawned = panel.querySelector('.cert-max-spawned-input');
+        if (certSpawnerId && cache.certs.spawnerId !== undefined) certSpawnerId.value = cache.certs.spawnerId;
+        if (certType && cache.certs.type !== undefined) certType.value = cache.certs.type;
+        if (certLabel && cache.certs.label !== undefined) certLabel.value = cache.certs.label;
+        if (certMaxSpawned && cache.certs.maxSpawned !== undefined) certMaxSpawned.value = cache.certs.maxSpawned;
+    }
+
+    if (cache.vehicles) {
+        const certSelect = panel.querySelector('.vehicle-cert-select');
+        const vehicleSpawnerId = panel.querySelector('.vehicle-spawner-id-input');
+        const vehicleModel = panel.querySelector('.vehicle-model-input');
+        const vehicleLabel = panel.querySelector('.vehicle-label-input');
+        const vehicleLivery = panel.querySelector('.vehicle-livery-input');
+        const vehicleExtras = panel.querySelector('.vehicle-extras-input');
+        const vehicleEngine = panel.querySelector('.vehicle-engine-input');
+        const vehicleAllowedJobs = panel.querySelector('.vehicle-allowed-jobs-input');
+        if (certSelect && cache.vehicles.certSelect !== undefined) certSelect.value = cache.vehicles.certSelect;
+        if (vehicleSpawnerId && cache.vehicles.spawnerId !== undefined) vehicleSpawnerId.value = cache.vehicles.spawnerId;
+        if (vehicleModel && cache.vehicles.model !== undefined) vehicleModel.value = cache.vehicles.model;
+        if (vehicleLabel && cache.vehicles.label !== undefined) vehicleLabel.value = cache.vehicles.label;
+        if (vehicleLivery && cache.vehicles.livery !== undefined) vehicleLivery.value = cache.vehicles.livery;
+        if (vehicleExtras && cache.vehicles.extras !== undefined) vehicleExtras.value = cache.vehicles.extras;
+        if (vehicleEngine && cache.vehicles.engine !== undefined) vehicleEngine.value = cache.vehicles.engine;
+        if (vehicleAllowedJobs && cache.vehicles.allowedJobs !== undefined) vehicleAllowedJobs.value = cache.vehicles.allowedJobs;
+    }
+}
+
+function savePedAdminFormState() {
+    const panel = document.querySelector('.panel');
+    if (!panel) return;
+
+    const form = panel.querySelector('.ped-admin-form');
+    if (!form) return;
+
+    const cache = { editingIndex: editingPed ? editingPed.index : null, fields: {} };
+    const formData = new FormData(form);
+
+    for (const [key, value] of formData.entries()) {
+        cache.fields[key] = value;
+    }
+
+    cache.fields.showPed = form.querySelector('input[name="showPed"]')?.checked || false;
+    cache.fields.blipEnabled = form.querySelector('input[name="blipEnabled"]')?.checked || false;
+
+    pedAdminFormCache = cache;
+}
+
+function restorePedAdminFormState() {
+    if (!pedAdminFormCache) return;
+
+    const panel = document.querySelector('.panel');
+    if (!panel) return;
+
+    const form = panel.querySelector('.ped-admin-form');
+    if (!form) return;
+
+    const cache = pedAdminFormCache;
+
+    for (const [key, value] of Object.entries(cache.fields)) {
+        const input = form.querySelector(`[name="${key}"]`);
+        if (!input) continue;
+
+        if (input.type === 'checkbox') {
+            input.checked = !!value;
+        } else {
+            input.value = value;
+        }
+    }
+
+    const typeSelect = form.querySelector('select[name="type"]');
+    if (typeSelect) {
+        typeSelect.dispatchEvent(new Event('change'));
+    }
 }
 
 function renderVehicleAdmin() {
@@ -1314,6 +1463,8 @@ function renderVehicleAdmin() {
     licensesTab.textContent = 'Licenses';
     licensesTab.addEventListener('click', () => {
         activeVehicleAdminTab = 'licenses';
+        editingCert = null;
+        editingVehicle = null;
         renderVehicleAdmin();
     });
 
@@ -1323,6 +1474,8 @@ function renderVehicleAdmin() {
     vehiclesTab.textContent = 'Vehicles';
     vehiclesTab.addEventListener('click', () => {
         activeVehicleAdminTab = 'vehicles';
+        editingCert = null;
+        editingVehicle = null;
         renderVehicleAdmin();
     });
 
@@ -1336,23 +1489,26 @@ function renderVehicleAdmin() {
     const certList = document.createElement('div');
     certList.className = 'vehicle-admin-list';
 
-    // Add Certification Form
-    const addCertForm = document.createElement('div');
-    addCertForm.className = 'vehicle-admin-form';
-    addCertForm.innerHTML = `
-        <h3>Add License</h3>
-        <input type="number" class="cert-spawner-id-input" placeholder="Vehicle Spawner ID (blank = all peds)" min="1" />
-        <input type="text" class="cert-type-input" placeholder="Cert Type (e.g., heat, moto, k9, air)" />
-        <input type="text" class="cert-label-input" placeholder="Label (e.g., Heat License)" />
-        <input type="number" class="cert-max-spawned-input" placeholder="Max Spawned" min="1" />
-        <button type="button" class="cert-add-button">Add License</button>
+    // Add/Edit Certification Form
+    const certForm = document.createElement('div');
+    certForm.className = 'vehicle-admin-form';
+    const isEditingCert = editingCert && editingCert.id;
+
+    certForm.innerHTML = `
+        <h3>${isEditingCert ? 'Edit License' : 'Add License'}</h3>
+        <input type="number" class="cert-spawner-id-input" placeholder="Vehicle Spawner ID (blank = all peds)" min="1" value="${isEditingCert ? (editingCert.vehicle_spawner_id || '') : ''}" />
+        <input type="text" class="cert-type-input" placeholder="Cert Type (e.g., heat, moto, k9, air)" value="${isEditingCert ? editingCert.cert_type : ''}" />
+        <input type="text" class="cert-label-input" placeholder="Label (e.g., Heat License)" value="${isEditingCert ? editingCert.label : ''}" />
+        <input type="number" class="cert-max-spawned-input" placeholder="Max Spawned" min="1" value="${isEditingCert ? editingCert.max_spawned : ''}" />
+        <button type="button" class="cert-add-button">${isEditingCert ? 'Save Changes' : 'Add License'}</button>
+        ${isEditingCert ? '<button type="button" class="cert-cancel-button">Cancel</button>' : ''}
     `;
 
-    const certTypeInput = addCertForm.querySelector('.cert-type-input');
-    const certSpawnerIdInput = addCertForm.querySelector('.cert-spawner-id-input');
-    const certLabelInput = addCertForm.querySelector('.cert-label-input');
-    const certMaxSpawnedInput = addCertForm.querySelector('.cert-max-spawned-input');
-    const certAddButton = addCertForm.querySelector('.cert-add-button');
+    const certTypeInput = certForm.querySelector('.cert-type-input');
+    const certSpawnerIdInput = certForm.querySelector('.cert-spawner-id-input');
+    const certLabelInput = certForm.querySelector('.cert-label-input');
+    const certMaxSpawnedInput = certForm.querySelector('.cert-max-spawned-input');
+    const certAddButton = certForm.querySelector('.cert-add-button');
 
     certAddButton.addEventListener('click', () => {
         const certType = certTypeInput.value.trim();
@@ -1366,12 +1522,25 @@ function renderVehicleAdmin() {
             return;
         }
 
-        postNui('vehicleAdminAddCert', { cert_type: certType, label, max_spawned: maxSpawned, vehicle_spawner_id: spawnerId });
+        if (isEditingCert) {
+            postNui('vehicleAdminUpdateCert', { id: editingCert.id, cert_type: certType, label, max_spawned: maxSpawned, vehicle_spawner_id: spawnerId });
+            editingCert = null;
+        } else {
+            postNui('vehicleAdminAddCert', { cert_type: certType, label, max_spawned: maxSpawned, vehicle_spawner_id: spawnerId });
+        }
         certSpawnerIdInput.value = '';
         certTypeInput.value = '';
         certLabelInput.value = '';
         certMaxSpawnedInput.value = '';
     });
+
+    const certCancelButton = certForm.querySelector('.cert-cancel-button');
+    if (certCancelButton) {
+        certCancelButton.addEventListener('click', () => {
+            editingCert = null;
+            renderVehicleAdmin();
+        });
+    }
 
     // Existing Certifications List
     vehicleSpawnerCerts.forEach((cert) => {
@@ -1386,25 +1555,42 @@ function renderVehicleAdmin() {
                 <span class="cert-status">${cert.enabled ? 'Enabled' : 'Disabled'}</span>
             </div>
             <div class="vehicle-admin-row-actions">
+                <button type="button" class="cert-edit-button">Edit</button>
                 <button type="button" class="cert-toggle-button">${cert.enabled ? 'Disable' : 'Enable'}</button>
                 <button type="button" class="cert-delete-button">Delete</button>
             </div>
+            <div class="delete-confirm" hidden>
+                <span>Delete license "${cert.cert_type}"?</span>
+                <button type="button" class="mini-button confirm-delete-button">Confirm</button>
+                <button type="button" class="mini-button cancel-delete-button">Cancel</button>
+            </div>
         `;
+
+        certRow.querySelector('.cert-edit-button').addEventListener('click', () => {
+            editingCert = cert;
+            renderVehicleAdmin();
+        });
 
         certRow.querySelector('.cert-toggle-button').addEventListener('click', () => {
             postNui('vehicleAdminToggleCert', { id: cert.id });
         });
 
+        const deleteConfirm = certRow.querySelector('.delete-confirm');
         certRow.querySelector('.cert-delete-button').addEventListener('click', () => {
-            if (confirm(`Delete license "${cert.cert_type}"?`)) {
-                postNui('vehicleAdminDeleteCert', { id: cert.id });
-            }
+            deleteConfirm.hidden = false;
+        });
+        deleteConfirm.querySelector('.cancel-delete-button').addEventListener('click', () => {
+            deleteConfirm.hidden = true;
+        });
+        deleteConfirm.querySelector('.confirm-delete-button').addEventListener('click', () => {
+            postNui('vehicleAdminDeleteCert', { id: cert.id });
+            deleteConfirm.hidden = true;
         });
 
         certList.append(certRow);
     });
 
-    certSection.append(addCertForm, certList);
+    certSection.append(certForm, certList);
 
     // Vehicle Management Section
     const vehicleSection = document.createElement('section');
@@ -1414,9 +1600,10 @@ function renderVehicleAdmin() {
     const vehicleList = document.createElement('div');
     vehicleList.className = 'vehicle-admin-list';
 
-    // Add Vehicle Form
-    const addVehicleForm = document.createElement('div');
-    addVehicleForm.className = 'vehicle-admin-form';
+    // Add/Edit Vehicle Form
+    const isEditingVehicle = editingVehicle && editingVehicle.id;
+    const vehicleForm = document.createElement('div');
+    vehicleForm.className = 'vehicle-admin-form';
 
     const certSelect = document.createElement('select');
     certSelect.className = 'vehicle-cert-select';
@@ -1429,29 +1616,34 @@ function renderVehicleAdmin() {
         certSelect.append(option);
     });
 
-    addVehicleForm.innerHTML = `
-        <h3>Add Vehicle</h3>
+    vehicleForm.innerHTML = `
+        <h3>${isEditingVehicle ? 'Edit Vehicle' : 'Add Vehicle'}</h3>
     `;
-    addVehicleForm.append(certSelect);
-    addVehicleForm.insertAdjacentHTML('beforeend', `
-        <input type="number" class="vehicle-spawner-id-input" placeholder="Vehicle Spawner ID (blank = all peds)" min="1" />
-        <input type="text" class="vehicle-model-input" placeholder="Model Name (e.g., granger)" />
-        <input type="text" class="vehicle-label-input" placeholder="Label (e.g., Granger)" />
-        <input type="number" class="vehicle-livery-input" placeholder="Livery Number (optional)" min="0" step="1" />
-        <input type="text" class="vehicle-extras-input" placeholder="Extras (optional, e.g. 1,2,3)" />
-        <input type="number" class="vehicle-engine-input" placeholder="Engine Mod (0-4, optional)" min="0" max="4" step="1" />
-        <input type="text" class="vehicle-allowed-jobs-input" placeholder="Allowed Jobs/Types (optional, e.g. leo,police,ems)" />
-        <button type="button" class="vehicle-add-button">Add Vehicle</button>
+    vehicleForm.append(certSelect);
+    vehicleForm.insertAdjacentHTML('beforeend', `
+        <input type="number" class="vehicle-spawner-id-input" placeholder="Vehicle Spawner ID (blank = all peds)" min="1" value="${isEditingVehicle ? (editingVehicle.vehicle_spawner_id || '') : ''}" />
+        <input type="text" class="vehicle-model-input" placeholder="Model Name (e.g., granger)" value="${isEditingVehicle ? editingVehicle.model : ''}" />
+        <input type="text" class="vehicle-label-input" placeholder="Label (e.g., Granger)" value="${isEditingVehicle ? editingVehicle.label : ''}" />
+        <input type="number" class="vehicle-livery-input" placeholder="Livery Number (optional)" min="0" step="1" value="${isEditingVehicle && editingVehicle.livery != null ? editingVehicle.livery : ''}" />
+        <input type="text" class="vehicle-extras-input" placeholder="Extras (optional, e.g. 1,2,3)" value="${isEditingVehicle ? (editingVehicle.extras || '') : ''}" />
+        <input type="number" class="vehicle-engine-input" placeholder="Engine Mod (0-4, optional)" min="0" max="4" step="1" value="${isEditingVehicle && editingVehicle.mod_engine != null ? editingVehicle.mod_engine : ''}" />
+        <input type="text" class="vehicle-allowed-jobs-input" placeholder="Allowed Jobs/Types (optional, e.g. leo,police,ems)" value="${isEditingVehicle ? (editingVehicle.allowed_jobs || '') : ''}" />
+        <button type="button" class="vehicle-add-button">${isEditingVehicle ? 'Save Changes' : 'Add Vehicle'}</button>
+        ${isEditingVehicle ? '<button type="button" class="vehicle-cancel-button">Cancel</button>' : ''}
     `);
 
-    const vehicleSpawnerIdInput = addVehicleForm.querySelector('.vehicle-spawner-id-input');
-    const vehicleModelInput = addVehicleForm.querySelector('.vehicle-model-input');
-    const vehicleLabelInput = addVehicleForm.querySelector('.vehicle-label-input');
-    const vehicleLiveryInput = addVehicleForm.querySelector('.vehicle-livery-input');
-    const vehicleExtrasInput = addVehicleForm.querySelector('.vehicle-extras-input');
-    const vehicleEngineInput = addVehicleForm.querySelector('.vehicle-engine-input');
-    const vehicleAllowedJobsInput = addVehicleForm.querySelector('.vehicle-allowed-jobs-input');
-    const vehicleAddButton = addVehicleForm.querySelector('.vehicle-add-button');
+    const vehicleSpawnerIdInput = vehicleForm.querySelector('.vehicle-spawner-id-input');
+    const vehicleModelInput = vehicleForm.querySelector('.vehicle-model-input');
+    const vehicleLabelInput = vehicleForm.querySelector('.vehicle-label-input');
+    const vehicleLiveryInput = vehicleForm.querySelector('.vehicle-livery-input');
+    const vehicleExtrasInput = vehicleForm.querySelector('.vehicle-extras-input');
+    const vehicleEngineInput = vehicleForm.querySelector('.vehicle-engine-input');
+    const vehicleAllowedJobsInput = vehicleForm.querySelector('.vehicle-allowed-jobs-input');
+    const vehicleAddButton = vehicleForm.querySelector('.vehicle-add-button');
+
+    if (isEditingVehicle) {
+        certSelect.value = editingVehicle.cert_type || '';
+    }
 
     certSelect.addEventListener('change', () => {
         const selectedOption = certSelect.options[certSelect.selectedIndex];
@@ -1479,7 +1671,7 @@ function renderVehicleAdmin() {
             return;
         }
 
-        postNui('vehicleAdminAddVehicle', {
+        const payload = {
             cert_type: certType,
             model,
             label,
@@ -1488,7 +1680,15 @@ function renderVehicleAdmin() {
             extras,
             mod_engine: engineMod,
             allowed_jobs: allowedJobs
-        });
+        };
+
+        if (isEditingVehicle) {
+            payload.id = editingVehicle.id;
+            postNui('vehicleAdminUpdateVehicle', payload);
+            editingVehicle = null;
+        } else {
+            postNui('vehicleAdminAddVehicle', payload);
+        }
         vehicleSpawnerIdInput.value = '';
         vehicleModelInput.value = '';
         vehicleLabelInput.value = '';
@@ -1498,6 +1698,14 @@ function renderVehicleAdmin() {
         vehicleAllowedJobsInput.value = '';
         certSelect.value = '';
     });
+
+    const vehicleCancelButton = vehicleForm.querySelector('.vehicle-cancel-button');
+    if (vehicleCancelButton) {
+        vehicleCancelButton.addEventListener('click', () => {
+            editingVehicle = null;
+            renderVehicleAdmin();
+        });
+    }
 
     // Existing Vehicles List (grouped by certification)
     vehicleSpawnerCerts.forEach((cert) => {
@@ -1524,26 +1732,44 @@ function renderVehicleAdmin() {
                     <span class="vehicle-status">${vehicle.enabled ? 'Enabled' : 'Disabled'}</span>
                 </div>
                 <div class="vehicle-admin-row-actions">
+                    <button type="button" class="vehicle-edit-button">Edit</button>
                     <button type="button" class="vehicle-toggle-button">${vehicle.enabled ? 'Disable' : 'Enable'}</button>
                     <button type="button" class="vehicle-delete-button">Delete</button>
                 </div>
+                <div class="delete-confirm" hidden>
+                    <span>Delete vehicle "${vehicle.label}"?</span>
+                    <button type="button" class="mini-button confirm-delete-button">Confirm</button>
+                    <button type="button" class="mini-button cancel-delete-button">Cancel</button>
+                </div>
             `;
+
+            vehicleRow.querySelector('.vehicle-edit-button').addEventListener('click', () => {
+                editingVehicle = vehicle;
+                activeVehicleAdminTab = 'vehicles';
+                renderVehicleAdmin();
+            });
 
             vehicleRow.querySelector('.vehicle-toggle-button').addEventListener('click', () => {
                 postNui('vehicleAdminToggleVehicle', { id: vehicle.id });
             });
 
+            const deleteConfirm = vehicleRow.querySelector('.delete-confirm');
             vehicleRow.querySelector('.vehicle-delete-button').addEventListener('click', () => {
-                if (confirm(`Delete vehicle "${vehicle.label}"?`)) {
-                    postNui('vehicleAdminDeleteVehicle', { id: vehicle.id });
-                }
+                deleteConfirm.hidden = false;
+            });
+            deleteConfirm.querySelector('.cancel-delete-button').addEventListener('click', () => {
+                deleteConfirm.hidden = true;
+            });
+            deleteConfirm.querySelector('.confirm-delete-button').addEventListener('click', () => {
+                postNui('vehicleAdminDeleteVehicle', { id: vehicle.id });
+                deleteConfirm.hidden = true;
             });
 
             vehicleList.append(vehicleRow);
         });
     });
 
-    vehicleSection.append(addVehicleForm, vehicleList);
+    vehicleSection.append(vehicleForm, vehicleList);
 
     adminShell.append(tabs);
 
@@ -1554,6 +1780,8 @@ function renderVehicleAdmin() {
     }
 
     tradeList.replaceChildren(adminShell);
+    minimizeButton.style.display = '';
+    restoreVehicleAdminFormState();
 }
 
 window.addEventListener('message', (event) => {
@@ -1585,7 +1813,23 @@ window.addEventListener('message', (event) => {
     if (data.action === 'openPedAdmin') {
         title.textContent = data.title || 'Ped Admin';
         pedAdminPeds = Array.isArray(data.peds) ? data.peds : [];
-        editingPed = editingPed ? pedAdminPeds.find((ped) => ped.index === editingPed.index) || null : null;
+        if (data.restore && pedAdminFormCache) {
+            editingPed = pedAdminFormCache.editingIndex != null ? pedAdminPeds.find((ped) => ped.index === pedAdminFormCache.editingIndex) || null : null;
+        } else {
+            editingPed = editingPed ? pedAdminPeds.find((ped) => ped.index === editingPed.index) || null : null;
+            pedAdminFormCache = null;
+        }
+        renderPedAdmin();
+        openPanel();
+        return;
+    }
+
+    if (data.action === 'restorePedAdmin') {
+        title.textContent = data.title || 'Ped Admin';
+        pedAdminPeds = Array.isArray(data.peds) ? data.peds : [];
+        if (pedAdminFormCache) {
+            editingPed = pedAdminFormCache.editingIndex != null ? pedAdminPeds.find((ped) => ped.index === pedAdminFormCache.editingIndex) || null : null;
+        }
         renderPedAdmin();
         openPanel();
         return;
@@ -1595,7 +1839,24 @@ window.addEventListener('message', (event) => {
         title.textContent = data.title || 'Vehicle Spawner Admin';
         vehicleSpawnerCerts = Array.isArray(data.certs) ? data.certs : [];
         vehicleSpawnerVehicles = Array.isArray(data.vehicles) ? data.vehicles : [];
-        activeVehicleAdminTab = 'licenses';
+        if (data.restore && vehicleAdminFormCache) {
+            activeVehicleAdminTab = vehicleAdminFormCache.tab || 'licenses';
+        } else {
+            activeVehicleAdminTab = 'licenses';
+            vehicleAdminFormCache = null;
+        }
+        renderVehicleAdmin();
+        openPanel();
+        return;
+    }
+
+    if (data.action === 'restoreVehicleAdmin') {
+        title.textContent = data.title || 'Vehicle Spawner Admin';
+        vehicleSpawnerCerts = Array.isArray(data.certs) ? data.certs : [];
+        vehicleSpawnerVehicles = Array.isArray(data.vehicles) ? data.vehicles : [];
+        if (vehicleAdminFormCache) {
+            activeVehicleAdminTab = vehicleAdminFormCache.tab || 'licenses';
+        }
         renderVehicleAdmin();
         openPanel();
         return;
@@ -1643,6 +1904,24 @@ window.addEventListener('message', (event) => {
 });
 
 closeButton.addEventListener('click', closeMenu);
+
+minimizeButton.addEventListener('click', () => {
+    if (body.classList.contains('is-vehicle-admin')) {
+        saveVehicleAdminFormState();
+        body.classList.remove('is-open');
+        body.classList.remove('is-vehicle-admin');
+        panel.setAttribute('aria-hidden', 'true');
+        minimizeButton.style.display = 'none';
+        postNui('vehicleAdminMinimize');
+    } else if (body.classList.contains('is-ped-admin')) {
+        savePedAdminFormState();
+        body.classList.remove('is-open');
+        body.classList.remove('is-ped-admin');
+        panel.setAttribute('aria-hidden', 'true');
+        minimizeButton.style.display = 'none';
+        postNui('pedAdminMinimize');
+    }
+});
 
 window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
