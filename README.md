@@ -9,7 +9,7 @@ Players interact with database-managed peds to either trade one item for another
 - Current release: **v1.6**
 - Baseline release: **v1.0**
 
-See `CHANGELOG.md` for full version history.
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ## v1.6 Highlights
 
