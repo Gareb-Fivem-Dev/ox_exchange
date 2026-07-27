@@ -50,7 +50,15 @@ let pedAdminFormCache = null;
 let editingCert = null;
 let editingVehicle = null;
 
+let adminHubPermissions = {};
+let adminHubBuiltIn = [];
+let adminHubCategories = [];
+let adminHubCustomCommands = [];
+let adminHubActiveCategory = null;
+let adminHubDebug = false;
+
 function postNui(eventName, data = {}) {
+    if (adminHubDebug) console.log('[AdminHub] postNui:', eventName, data);
     return fetch(`https://${resourceName}/${eventName}`, {
         method: 'POST',
         headers: {
@@ -67,6 +75,7 @@ function closeMenu() {
     body.classList.remove('is-buyer-admin');
     body.classList.remove('is-ped-admin');
     body.classList.remove('is-vehicle-admin');
+    body.classList.remove('is-admin-hub');
     panel.setAttribute('aria-hidden', 'true');
     clearBuyerHeaderSearch();
     vehicleAdminFormCache = null;
@@ -74,6 +83,8 @@ function closeMenu() {
     editingCert = null;
     editingVehicle = null;
     minimizeButton.style.display = 'none';
+    document.getElementById('admin-hub-modal').classList.remove('visible');
+    document.getElementById('admin-hub-confirm-modal').classList.remove('visible');
     postNui('close');
 }
 
@@ -177,6 +188,8 @@ function renderTrades() {
     body.classList.remove('is-buyer');
     body.classList.remove('is-buyer-admin');
     body.classList.remove('is-ped-admin');
+    body.classList.remove('is-vehicle-admin');
+    body.classList.remove('is-admin-hub');
     minimizeButton.style.display = 'none';
     clearBuyerHeaderSearch();
     eyebrow.textContent = '';
@@ -332,6 +345,8 @@ function renderBuyers() {
     body.classList.remove('is-admin');
     body.classList.remove('is-buyer-admin');
     body.classList.remove('is-ped-admin');
+    body.classList.remove('is-vehicle-admin');
+    body.classList.remove('is-admin-hub');
     body.classList.add('is-buyer');
     minimizeButton.style.display = 'none';
     renderBuyerHeaderSearch();
@@ -1159,10 +1174,12 @@ function createPedAdminRow(ped) {
 
 function renderAdmin() {
     clearBuyerHeaderSearch();
-    body.classList.add('is-admin');
     body.classList.remove('is-buyer');
     body.classList.remove('is-buyer-admin');
     body.classList.remove('is-ped-admin');
+    body.classList.remove('is-vehicle-admin');
+    body.classList.remove('is-admin-hub');
+    body.classList.add('is-admin');
     minimizeButton.style.display = 'none';
     eyebrow.textContent = '';
     tradeList.className = 'trade-list admin-layout';
@@ -1220,6 +1237,8 @@ function renderBuyerAdmin() {
     body.classList.remove('is-admin');
     body.classList.remove('is-buyer');
     body.classList.remove('is-ped-admin');
+    body.classList.remove('is-vehicle-admin');
+    body.classList.remove('is-admin-hub');
     body.classList.add('is-buyer-admin');
     minimizeButton.style.display = 'none';
     eyebrow.textContent = '';
@@ -1290,6 +1309,8 @@ function renderPedAdmin() {
     body.classList.remove('is-admin');
     body.classList.remove('is-buyer');
     body.classList.remove('is-buyer-admin');
+    body.classList.remove('is-ped-admin');
+    body.classList.remove('is-admin-hub');
     body.classList.add('is-ped-admin');
     minimizeButton.style.display = '';
     eyebrow.textContent = '';
@@ -1447,6 +1468,7 @@ function renderVehicleAdmin() {
     body.classList.remove('is-buyer');
     body.classList.remove('is-buyer-admin');
     body.classList.remove('is-ped-admin');
+    body.classList.remove('is-admin-hub');
     body.classList.add('is-vehicle-admin');
     eyebrow.textContent = '';
     tradeList.className = 'trade-list admin-layout vehicle-admin-layout';
@@ -1784,8 +1806,512 @@ function renderVehicleAdmin() {
     restoreVehicleAdminFormState();
 }
 
+/* ═══════════════════════════════════════════
+   Admin Hub
+   ═══════════════════════════════════════════ */
+
+const adminHubSidebar = document.getElementById('admin-hub-sidebar');
+const adminHubContentHeader = document.getElementById('admin-hub-content-header');
+const adminHubCommandGrid = document.getElementById('admin-hub-command-grid');
+const adminHubModal = document.getElementById('admin-hub-modal');
+const adminHubModalTitle = document.getElementById('admin-hub-modal-title');
+const adminHubModalBody = document.getElementById('admin-hub-modal-body');
+const adminHubModalClose = document.getElementById('admin-hub-modal-close');
+const adminHubModalCancel = document.getElementById('admin-hub-modal-cancel');
+const adminHubModalSave = document.getElementById('admin-hub-modal-save');
+const adminHubConfirmModal = document.getElementById('admin-hub-confirm-modal');
+const adminHubConfirmTitle = document.getElementById('admin-hub-confirm-title');
+const adminHubConfirmText = document.getElementById('admin-hub-confirm-text');
+const adminHubConfirmClose = document.getElementById('admin-hub-confirm-close');
+const adminHubConfirmCancel = document.getElementById('admin-hub-confirm-cancel');
+const adminHubConfirmOk = document.getElementById('admin-hub-confirm-ok');
+const adminHubCloseButton = document.getElementById('admin-hub-close-button');
+
+const adminHubIconOptions = ['⚙️', '🔄', '💰', '👤', '🚗', '📝', '⚠️', '🔧', '🗑️', '📡', '💾', '🔐', '📋', '👥', '🗄️', '🔌'];
+const adminHubPermissionOptions = [
+    { value: 'admin', label: 'Admin Only' },
+    { value: 'group.admin', label: 'Group: Admin' },
+    { value: 'group.mod', label: 'Group: Mod' },
+    { value: 'group.support', label: 'Group: Support' },
+    { value: 'command.add_ace', label: 'Command: Add ACE' },
+    { value: 'command.remove_ace', label: 'Command: Remove ACE' },
+    { value: 'command.resmon', label: 'Command: Resmon' },
+    { value: 'command.clothingadmin', label: 'Command: Clothing Admin' },
+    { value: 'command.exchangeadmin', label: 'Command: Exchange Admin' },
+    { value: 'command.buyeradmin', label: 'Command: Buyer Admin' },
+    { value: 'command.pedadmin', label: 'Command: Ped Admin' },
+    { value: 'trades', label: 'Trading Permission' },
+    { value: 'buyers', label: 'Buyer Permission' },
+    { value: 'peds', label: 'Ped Permission' },
+    { value: 'vehicles', label: 'Vehicle Permission' },
+    { value: 'jg.admin', label: 'Group: JG Admin' }
+];
+
+let adminHubEditedCommandId = null;
+let adminHubCommandParameters = {};;
+
+let adminHubModalMode = null;
+let adminHubEditingId = null;
+
+function renderAdminHub() {
+    adminHubSidebar.innerHTML = '';
+
+    const hasBuiltIn = adminHubBuiltIn.length > 0;
+
+    const builtInLabel = document.createElement('div');
+    builtInLabel.className = 'admin-hub-sidebar-label';
+    builtInLabel.textContent = 'Built-in';
+    adminHubSidebar.append(builtInLabel);
+
+    if (hasBuiltIn) {
+        const item = document.createElement('div');
+        item.className = 'admin-hub-sidebar-item' + (adminHubActiveCategory === '_builtin_exchange' ? ' active' : '');
+        item.innerHTML = '<span class="icon">🔄</span> Exchange';
+        item.addEventListener('click', () => {
+            adminHubActiveCategory = '_builtin_exchange';
+            renderAdminHub();
+        });
+        adminHubSidebar.append(item);
+    }
+
+    if (adminHubCategories.length > 0) {
+        const divider = document.createElement('div');
+        divider.className = 'admin-hub-sidebar-divider';
+        const customLabel = document.createElement('div');
+        customLabel.className = 'admin-hub-sidebar-label';
+        customLabel.textContent = 'Custom';
+        adminHubSidebar.append(divider, customLabel);
+
+        adminHubCategories.forEach((cat) => {
+            const item = document.createElement('div');
+            item.className = 'admin-hub-sidebar-item' + (adminHubActiveCategory === 'cat_' + cat.id ? ' active' : '');
+            item.innerHTML = `<span class="icon">${cat.icon || '⚙️'}</span> ${cat.label}`;
+            item.addEventListener('click', () => {
+                adminHubActiveCategory = 'cat_' + cat.id;
+                renderAdminHub();
+            });
+            adminHubSidebar.append(item);
+        });
+    }
+
+    const divider2 = document.createElement('div');
+    divider2.className = 'admin-hub-sidebar-divider';
+    const manageItem = document.createElement('div');
+    manageItem.className = 'admin-hub-sidebar-item' + (adminHubActiveCategory === '_manage' ? ' active' : '');
+    manageItem.style.color = '#c45e20';
+    manageItem.innerHTML = '<span class="icon">➕</span> Manage';
+    manageItem.addEventListener('click', () => {
+        adminHubActiveCategory = '_manage';
+        renderAdminHub();
+    });
+    adminHubSidebar.append(divider2, manageItem);
+
+    if (!adminHubActiveCategory) {
+        adminHubActiveCategory = hasBuiltIn ? '_builtin_exchange' : (adminHubCategories.length > 0 ? 'cat_' + adminHubCategories[0].id : '_manage');
+    }
+
+    renderAdminHubContent();
+}
+
+function renderAdminHubContent() {
+    adminHubCommandGrid.innerHTML = '';
+
+    if (adminHubActiveCategory === '_manage') {
+        adminHubContentHeader.querySelector('h2').textContent = 'Manage';
+        adminHubContentHeader.querySelector('p').textContent = 'Add, edit, or remove categories and custom commands';
+
+        const addCatCard = createAdminHubCard('📂', 'Add Category', 'Create a new command category', null, () => openAdminHubCategoryModal());
+        const editCatCard = createAdminHubCard('✏️', 'Edit Categories', 'Rename or reorder categories', null, () => openAdminHubCategoryListModal());
+        const addCmdCard = createAdminHubCard('🔗', 'Add Custom Command', 'Register a new command', 'admin only', () => openAdminHubCommandModal());
+
+        adminHubCommandGrid.append(addCatCard, editCatCard, addCmdCard);
+        return;
+    }
+
+    let commands = [];
+    let catLabel = '';
+    let catDesc = '';
+
+    if (adminHubActiveCategory === '_builtin_exchange') {
+        commands = adminHubBuiltIn;
+        catLabel = 'Exchange';
+        catDesc = 'Manage item exchange trades, buyers, peds, and vehicles';
+    } else if (adminHubActiveCategory && adminHubActiveCategory.startsWith('cat_')) {
+        const catId = parseInt(adminHubActiveCategory.replace('cat_', ''));
+        const cat = adminHubCategories.find(c => c.id === catId);
+        if (cat) {
+            catLabel = cat.label;
+            catDesc = 'Custom commands in this category';
+            commands = adminHubCustomCommands.filter(c => c.category_id === catId).map(c => ({
+                ...c,
+                id: 'custom_' + c.id,
+                isCustom: true,
+                customId: c.id
+            }));
+        }
+    }
+
+    adminHubContentHeader.querySelector('h2').textContent = catLabel;
+    adminHubContentHeader.querySelector('p').textContent = catDesc;
+
+    commands.forEach((cmd) => {
+        const badge = cmd.isCustom ? cmd.command : cmd.command;
+        const card = createAdminHubCard(
+            cmd.icon || '⚙️',
+            cmd.title,
+            cmd.description || '',
+            badge,
+            () => {
+                if (cmd.isCustom) {
+                    if (cmd.parameters === 'true') {
+                        openAdminHubParamInputModal(cmd);
+                    } else {
+                        closeMenu();
+                        setTimeout(() => postNui('adminHubRunCustomCommand', { command: cmd.command, id: cmd.customId }), 100);
+                    }
+                } else {
+                    // Don't close menu for built-in commands - just switch panels
+                    postNui('adminHubRunBuiltIn', { command: cmd.command });
+                }
+            }
+        );
+
+        if (cmd.isCustom) {
+            const actions = document.createElement('div');
+            actions.style.cssText = 'display:flex;gap:4px;margin-top:8px;';
+            const editBtn = document.createElement('button');
+            editBtn.className = 'btn btn-cancel';
+            editBtn.style.cssText = 'font-size:10px;padding:4px 10px;';
+            editBtn.textContent = 'Edit';
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                openAdminHubCommandModal(cmd.customId);
+            });
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn btn-cancel';
+            deleteBtn.style.cssText = 'font-size:10px;padding:4px 10px;color:#e05555;';
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showAdminHubConfirm('Delete Command', `Delete "${cmd.title}"?`, () => {
+                    postNui('adminHubDeleteCommand', { id: cmd.customId });
+                });
+            });
+            actions.append(editBtn, deleteBtn);
+            card.append(actions);
+        }
+
+        adminHubCommandGrid.append(card);
+    });
+
+    if (!adminHubActiveCategory.startsWith('_builtin_')) {
+        const addCard = document.createElement('div');
+        addCard.className = 'admin-hub-cmd-card add-card';
+        addCard.innerHTML = '<div class="cmd-icon">+</div><div class="cmd-title">Add Command</div>';
+        addCard.addEventListener('click', () => openAdminHubCommandModal());
+        adminHubCommandGrid.append(addCard);
+    }
+}
+
+function createAdminHubCard(icon, title, description, badge, onClick) {
+    const card = document.createElement('div');
+    card.className = 'admin-hub-cmd-card';
+    card.innerHTML = `
+        <div class="cmd-icon">${icon}</div>
+        <div class="cmd-title">${title}</div>
+        <div class="cmd-desc">${description}</div>
+        ${badge ? `<div class="cmd-badge">${badge}</div>` : ''}
+    `;
+    card.addEventListener('click', onClick);
+    return card;
+}
+
+function showAdminHubConfirm(title, text, onConfirm) {
+    adminHubConfirmTitle.textContent = title;
+    adminHubConfirmText.textContent = text;
+    adminHubConfirmModal.classList.add('visible');
+
+    const cleanup = () => {
+        adminHubConfirmModal.classList.remove('visible');
+        adminHubConfirmOk.replaceWith(adminHubConfirmOk.cloneNode(true));
+        adminHubConfirmCancel.replaceWith(adminHubConfirmCancel.cloneNode(true));
+        adminHubConfirmClose.replaceWith(adminHubConfirmClose.cloneNode(true));
+    };
+
+    document.getElementById('admin-hub-confirm-ok').addEventListener('click', () => { cleanup(); onConfirm(); });
+    document.getElementById('admin-hub-confirm-cancel').addEventListener('click', cleanup);
+    document.getElementById('admin-hub-confirm-close').addEventListener('click', cleanup);
+}
+
+function openAdminHubCategoryModal(editCat) {
+    adminHubModalMode = 'category';
+    adminHubEditingId = editCat ? editCat.id : null;
+    adminHubModalTitle.textContent = editCat ? 'Edit Category' : 'Add Category';
+    adminHubModalBody.innerHTML = `
+        <div class="form-row">
+            <label>Category Name</label>
+            <input type="text" id="hub-cat-label" placeholder="e.g. Server Tools" value="${editCat ? editCat.label : ''}">
+        </div>
+        <div class="form-row-inline">
+            <div class="form-row">
+                <label>Icon</label>
+                <div class="icon-picker" id="hub-cat-icon-picker">${adminHubIconOptions.map(icon => `<div class="icon-chip${(!editCat || !editCat.icon || editCat.icon === icon) && icon === (editCat ? editCat.icon : '⚙️') ? ' selected' : ''}" data-icon="${icon}">${icon}</div>`).join('')}</div>
+            </div>
+            <div class="form-row">
+                <label>Sort Order</label>
+                <input type="number" id="hub-cat-sort" value="${editCat ? (editCat.sort_order || 0) : 0}" min="0">
+            </div>
+        </div>
+    `;
+    setupIconPicker('hub-cat-icon-picker');
+    adminHubModal.classList.add('visible');
+}
+
+function openAdminHubCategoryListModal() {
+    adminHubModalMode = 'categoryList';
+    adminHubModalTitle.textContent = 'Manage Categories';
+    adminHubModalBody.innerHTML = '';
+
+    if (adminHubCategories.length === 0) {
+        adminHubModalBody.innerHTML = '<p style="color:#777;font-size:13px;text-align:center;padding:20px 0">No custom categories yet.</p>';
+    } else {
+        adminHubCategories.forEach((cat) => {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#1c1c1c;border:1px solid #2a2a2a;border-radius:6px;';
+            row.innerHTML = `
+                <span style="font-size:13px;color:#f2f5f1">${cat.icon || '⚙️'} ${cat.label}</span>
+                <div style="display:flex;gap:4px;">
+                    <button class="btn btn-cancel hub-cat-edit" style="font-size:10px;padding:4px 10px;" data-id="${cat.id}">Edit</button>
+                    <button class="btn btn-cancel hub-cat-delete" style="font-size:10px;padding:4px 10px;color:#e05555;" data-id="${cat.id}">Delete</button>
+                </div>
+            `;
+            row.querySelector('.hub-cat-edit').addEventListener('click', () => {
+                adminHubModal.classList.remove('visible');
+                openAdminHubCategoryModal(cat);
+            });
+            row.querySelector('.hub-cat-delete').addEventListener('click', () => {
+                adminHubModal.classList.remove('visible');
+                showAdminHubConfirm('Delete Category', `Delete "${cat.label}" and all its commands?`, () => {
+                    postNui('adminHubDeleteCategory', { id: cat.id });
+                });
+            });
+            adminHubModalBody.append(row);
+        });
+    }
+    adminHubModal.classList.add('visible');
+}
+
+function openAdminHubParamInputModal(cmd) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay visible';
+    modal.innerHTML = `
+        <div class="modal" style="width:400px;">
+            <div class="modal-header">
+                <h3>Parameters for ${cmd.title}</h3>
+                <button class="modal-close">x</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size:12px;color:#999;margin-bottom:12px;">Enter parameter values (space separated):</p>
+                <div class="form-row">
+                    <input type="text" id="param-single" placeholder="e.g. player123 30 minutes" style="width:100%;">
+                    ${cmd.example ? `<div class="form-hint">Example: ${cmd.example}</div>` : ''}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cancel" id="param-cancel">Cancel</button>
+                <button class="btn btn-primary" id="param-submit">Run Command</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const cleanup = () => {
+        modal.remove();
+    };
+
+    modal.querySelector('.modal-close').addEventListener('click', cleanup);
+    modal.querySelector('#param-cancel').addEventListener('click', cleanup);
+    modal.addEventListener('click', (e) => { if (e.target === modal) cleanup(); });
+
+    modal.querySelector('#param-submit').addEventListener('click', () => {
+        const input = modal.querySelector('#param-single');
+        const val = input.value.trim();
+        if (!val) {
+            alert('Please enter parameter values');
+            return;
+        }
+        const fullCommand = cmd.command + ' ' + val;
+        cleanup();
+        closeMenu();
+        setTimeout(() => postNui('adminHubRunCustomCommand', { command: fullCommand, id: cmd.customId }), 100);
+    });
+}
+
+function openAdminHubCommandModal(editId) {
+    adminHubModalMode = 'command';
+    const editCmd = editId ? adminHubCustomCommands.find(c => c.id === editId) : null;
+    adminHubEditingId = editId || null;
+    adminHubModalTitle.textContent = editCmd ? 'Edit Command' : 'Add Custom Command';
+
+    const catOptions = adminHubCategories.map(c => `<option value="${c.id}"${editCmd && editCmd.category_id === c.id ? ' selected' : ''}>${c.label}</option>`).join('');
+    const permOptions = adminHubPermissionOptions.map(p => `<option value="${p.value}"${editCmd && editCmd.permission === p.value ? ' selected' : ''}>${p.label}</option>`).join('');
+
+    adminHubModalBody.innerHTML = `
+        <div class="form-row">
+            <label>Command Name</label>
+            <input type="text" id="hub-cmd-title" placeholder="e.g. Restart Server" value="${editCmd ? editCmd.title : ''}">
+        </div>
+        <div class="form-row">
+            <label>Description</label>
+            <input type="text" id="hub-cmd-desc" placeholder="What this command does" value="${editCmd ? (editCmd.description || '') : ''}">
+        </div>
+        <div class="form-row-inline">
+            <div class="form-row">
+                <label>Category</label>
+                <select id="hub-cmd-category">${catOptions}</select>
+            </div>
+            <div class="form-row">
+                <label>Permission</label>
+                <select id="hub-cmd-permission">${permOptions}</select>
+            </div>
+        </div>
+        <div class="form-row">
+            <label>Command to Run</label>
+            <input type="text" id="hub-cmd-command" placeholder="e.g. /jail" value="${editCmd ? editCmd.command : ''}">
+            <div class="form-hint">Command name (leading / is added automatically)</div>
+        </div>
+        <div class="form-row">
+            <label style="display:flex;align-items:center;gap:8px;">
+                <input type="checkbox" id="hub-cmd-has-params" ${editCmd && editCmd.parameters ? 'checked' : ''}>
+                <span>Has Parameters</span>
+            </label>
+        </div>
+        <div class="form-row" id="hub-cmd-example-row" style="${editCmd && editCmd.parameters ? '' : 'display:none'}">
+            <label>Example Format</label>
+            <input type="text" id="hub-cmd-example" placeholder="e.g. id time or [job_name] [min_job_grade]" value="${editCmd ? (editCmd.example || '') : ''}">
+            <div class="form-hint">Example format shown in parameter prompt (e.g., id time, [job_name] [min_job_grade], plate)</div>
+        </div>
+        <div class="form-row">
+            <label>Icon</label>
+            <div class="icon-picker" id="hub-cmd-icon-picker">${adminHubIconOptions.map(icon => `<div class="icon-chip${(editCmd && editCmd.icon === icon) || (!editCmd && icon === '⚙️') ? ' selected' : ''}" data-icon="${icon}">${icon}</div>`).join('')}</div>
+        </div>
+        <div class="form-row">
+            <label>Confirmation Prompt</label>
+            <input type="text" id="hub-cmd-confirm" placeholder="e.g. Are you sure? (leave blank to skip)" value="${editCmd ? (editCmd.confirm_prompt || '') : ''}">
+        </div>
+    `;
+    setupIconPicker('hub-cmd-icon-picker');
+    // Toggle parameters row and example row visibility
+    const hasParamsCheckbox = document.getElementById('hub-cmd-has-params');
+    const paramsRow = document.getElementById('hub-cmd-params-row');
+    const exampleRow = document.getElementById('hub-cmd-example-row');
+    if (hasParamsCheckbox) {
+        const toggle = () => {
+            const show = hasParamsCheckbox.checked;
+            if (paramsRow) paramsRow.style.display = show ? '' : 'none';
+            if (exampleRow) exampleRow.style.display = show ? '' : 'none';
+        };
+        hasParamsCheckbox.addEventListener('change', toggle);
+        // Initial state
+        toggle();
+    }
+    adminHubModal.classList.add('visible');
+}
+
+function setupIconPicker(pickerId) {
+    const picker = document.getElementById(pickerId);
+    if (!picker) return;
+    picker.querySelectorAll('.icon-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            picker.querySelectorAll('.icon-chip').forEach(c => c.classList.remove('selected'));
+            chip.classList.add('selected');
+        });
+    });
+}
+
+function getSelectedIcon(pickerId) {
+    const picker = document.getElementById(pickerId);
+    if (!picker) return '⚙️';
+    const sel = picker.querySelector('.icon-chip.selected');
+    return sel ? sel.dataset.icon : '⚙️';
+}
+
+adminHubModalClose.addEventListener('click', () => adminHubModal.classList.remove('visible'));
+adminHubModalCancel.addEventListener('click', () => adminHubModal.classList.remove('visible'));
+adminHubModal.addEventListener('click', (e) => { if (e.target === adminHubModal) adminHubModal.classList.remove('visible'); });
+adminHubConfirmModal.addEventListener('click', (e) => { if (e.target === adminHubConfirmModal) adminHubConfirmModal.classList.remove('visible'); });
+
+adminHubModalSave.addEventListener('click', () => {
+    if (adminHubModalMode === 'category') {
+        const label = document.getElementById('hub-cat-label').value.trim();
+        if (!label) return;
+        const data = {
+            label: label,
+            icon: getSelectedIcon('hub-cat-icon-picker'),
+            sort_order: document.getElementById('hub-cat-sort').value
+        };
+        if (adminHubEditingId) {
+            data.id = adminHubEditingId;
+            postNui('adminHubUpdateCategory', data);
+        } else {
+            postNui('adminHubAddCategory', data);
+        }
+    } else if (adminHubModalMode === 'command') {
+        const cmdTitle = document.getElementById('hub-cmd-title').value.trim();
+        const cmdCommand = document.getElementById('hub-cmd-command').value.trim();
+        if (!cmdTitle || !cmdCommand) return;
+        const data = {
+            title: cmdTitle,
+            description: document.getElementById('hub-cmd-desc').value.trim(),
+            category_id: document.getElementById('hub-cmd-category').value,
+            command: cmdCommand,
+            parameters: document.getElementById('hub-cmd-has-params').checked ? 'true' : 'false',
+            example: document.getElementById('hub-cmd-example').value.trim(),
+            icon: getSelectedIcon('hub-cmd-icon-picker'),
+            permission: document.getElementById('hub-cmd-permission').value,
+            confirm_prompt: document.getElementById('hub-cmd-confirm').value.trim()
+        };
+        if (adminHubEditingId) {
+            data.id = adminHubEditingId;
+            postNui('adminHubUpdateCommand', data);
+        } else {
+            postNui('adminHubAddCommand', data);
+        }
+    }
+    adminHubModal.classList.remove('visible');
+});
+
+adminHubCloseButton.addEventListener('click', closeMenu);
+
 window.addEventListener('message', (event) => {
     const data = event.data;
+    const adminHubDebug = data.debug === true;
+
+    if (adminHubDebug) console.log('[AdminHub] NUI message received:', event.data);
+
+    if (data.action === 'openAdminHub') {
+        adminHubPermissions = data.permissions || {};
+        adminHubBuiltIn = Array.isArray(data.builtIn) ? data.builtIn : [];
+        adminHubCategories = Array.isArray(data.categories) ? data.categories : [];
+        adminHubCustomCommands = Array.isArray(data.customCommands) ? data.customCommands : [];
+        adminHubActiveCategory = null;
+        body.classList.add('is-admin-hub');
+        renderAdminHub();
+        openPanel();
+        return;
+    }
+
+    if (data.action === 'refreshAdminHub') {
+        postNui('adminHubFetchData');
+        return;
+    }
+
+    if (data.action === 'adminHubUpdateData') {
+        adminHubCategories = Array.isArray(data.categories) ? data.categories : [];
+        adminHubCustomCommands = Array.isArray(data.customCommands) ? data.customCommands : [];
+        renderAdminHub();
+        return;
+    }
 
     if (data.action === 'openAdmin') {
         title.textContent = data.title || 'Exchange Admin';

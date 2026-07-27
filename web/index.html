@@ -8,7 +8,7 @@
 </head>
 <body>
     <main class="panel" aria-hidden="true">
-        <header class="panel__header">
+        <header class="panel__header" id="default-header">
             <div>
                 <p class="eyebrow"></p>
                 <h1 id="menu-title">Item Exchange</h1>
@@ -19,8 +19,59 @@
             </div>
         </header>
 
+        <header class="panel__header admin-hub-header" id="admin-hub-header">
+            <div class="admin-hub-logo">
+                <img src="img/logo.png" alt="Logo">
+            </div>
+            <div style="flex:1">
+                <h1>Admin Hub</h1>
+            </div>
+            <button class="icon-button" id="admin-hub-close-button" type="button" aria-label="Close">x</button>
+        </header>
+
         <section class="trade-list" id="trade-list"></section>
+
+        <div class="admin-hub-body" id="admin-hub-body">
+            <nav class="admin-hub-sidebar" id="admin-hub-sidebar"></nav>
+            <div class="admin-hub-content">
+                <div class="admin-hub-content-header" id="admin-hub-content-header">
+                    <h2></h2>
+                    <p></p>
+                </div>
+                <div class="admin-hub-command-grid" id="admin-hub-command-grid"></div>
+            </div>
+        </div>
     </main>
+
+    <div class="modal-overlay" id="admin-hub-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="admin-hub-modal-title">Add Command</h3>
+                <button class="modal-close" id="admin-hub-modal-close">x</button>
+            </div>
+            <div class="modal-body" id="admin-hub-modal-body"></div>
+            <div class="modal-footer">
+                <button class="btn btn-cancel" id="admin-hub-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="admin-hub-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="admin-hub-confirm-modal">
+        <div class="modal modal-confirm">
+            <div class="modal-header">
+                <h3 id="admin-hub-confirm-title">Confirm</h3>
+                <button class="modal-close" id="admin-hub-confirm-close">x</button>
+            </div>
+            <div class="modal-body">
+                <p id="admin-hub-confirm-text" style="font-size:13px;color:#ccc;line-height:1.5"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-cancel" id="admin-hub-confirm-cancel">Cancel</button>
+                <button class="btn btn-primary" id="admin-hub-confirm-ok">Confirm</button>
+            </div>
+        </div>
+    </div>
 
     <script src="script.js"></script>
 </body>

@@ -4,50 +4,281 @@ A configurable FiveM item exchange and item buyer resource built for `ox_lib`, `
 
 Players interact with database-managed peds to either trade one item for another or sell items for money. Admins can manage peds, trades, and buyer offers in game through the included web UI, so you do not need to restart the resource every time you add or change an offer.
 
+## Admin Hub
+
+A fully featured administration hub allowing admin users to manage custom commands directly from the in-game menu, eliminating the need to memorize console commands. The Admin Hub provides a clean, web-based interface where admins can see all available commands with their descriptions and execute them easily.
+
+### Key Features
+
+- **Parameterized Commands**: Commands with parameters show an input prompt when clicked, allowing admins to fill in values they need
+- **Categorized Commands**: Commands are organized into logical categories for easy navigation
+- **Flexible Permissions**: Each command can have its own permission requirement
+- **Visual Interface**: Clean, dark-themed interface with command icons and descriptions
+- **Instant Execution**: Commands execute immediately with just a click or parameter input
+
+### Command Types
+
+#### Simple Commands
+```
+/rank player_id level
+/create_account username password email
+/teleport x y z
+```
+
+#### Parameterized Commands
+When a command contains spaces (e.g., `jail id time`), clicking it shows a prompt:
+
+```
+Enter parameters for Jail Player
+Format: param1 value1 param2 value2
+Example: player123 30 minutes
+```
+
+User fills in: `player123 30 minutes` → System executes: `/jail player123 30 minutes`
+
+### Usage
+
+1. **Access**: Use `/exchange` in-game as an admin
+2. **Navigate**: Use sidebar to switch between built-in and custom command categories
+3. **Execute**: Click a command card to run it
+4. **Parameters**: For commands with parameters, fill in the prompt values at runtime
+
+### Built-in Categories
+
+The default Admin Hub includes a single **Exchange** category containing:
+
+- Trade Admin (edit/manage trades)
+- Buyer Admin (edit/manage buyer offers) 
+- Ped Admin (edit/manage peds)
+- Vehicle Spawner Admin (manage licenses/vehicles)
+
+### Managing Custom Commands
+
+Admins can create and manage custom commands through the **Manage** category:
+
+- **Add Category**: Create new command categories
+- **Edit Categories**: Modify category names, icons, and order
+- **Add Custom Command**: Create parameterized or simple commands
+- **Delete Commands**: Remove unused commands
+
+#### Creating a Custom Command
+
+To create a command like `/jail id time`:
+
+1. Go to **Manage** → **Add Custom Command**
+2. **Command Name**: `jail`
+3. **Command to Run**: (leave empty - /jail will be auto-added)
+4. **Parameters**: `id time` (parameter names separated by spaces)
+5. **Description**: `Send a player to jail`
+6. **Category**: Select or create appropriate category
+7. **Permission**: Set who can use this command
+8. **Icon**: Choose an icon (⚙️, 👤, etc.)
+9. **Confirm Prompt** (optional): `Enter player ID and jail time`
+
+#### Result
+
+Admins will see a command card with title **Jail** and description **Send a player to jail**. When clicked, it shows a prompt:
+
+```
+Enter parameters for Jail
+Format: param1 value1 param2 value2
+Example: player123 30 minutes
+```
+
+After entering `player123 30 minutes`, the system executes: `/jail player123 30 minutes`
+
+### Permissions System
+
+Commands require permissions based on your server.cfg ACE configuration. The permission dropdown in Admin Hub shows available permissions from your server.
+
+### SQL Schema
+
+Run `admin_hub_schema.sql` to create the required tables if they don't exist:
+
+```sql
+-- File: admin_hub_schema.sql
+-- Creates: item_exchange_admin_categories, item_exchange_admin_commands
+-- Includes both CREATE TABLE (for new) and ALTER TABLE (for existing)
+```
+
+This schema is backward compatible - if your tables already exist, the ALTER TABLE statements will update them safely.
+
+### Example Use Cases
+
+#### System Maintenance Commands
+- `/restart server` (simple)
+- `/kick id reason` (parameterized)
+- `/ban id duration` (parameterized)
+
+#### Player Management Commands
+- `/reward id amount item` (parameterized)
+- `/setrank id rank` (parameterized)
+- `/give id item quantity` (parameterized)
+
+#### Configuration Commands
+- `/setweather weather_type` (parameterized)
+- `/setservername new_name` (simple)
+- `/setmaxplayers number` (simple)
+
+### Notes
+
+- Commands with spaces are detected automatically and show parameter prompts
+- Parameters are combined with the command name and executed as one command
+- All commands run with the permissions of the player who clicked them
+- The Admin Hub persists between server restarts
+
+- The Admin Hub persists between server restarts
+
+## Vehicle Spawner Configuration
+
+The Vehicle Spawner system supports configurable fuel and key system integrations. Edit these in `config.lua` under `Config.VehicleSpawner`:
+
+```lua
+Config.VehicleSpawner = {
+    enabled = true,
+    clearOnStart = true,
+    
+    -- Fuel system integration
+    -- Options: 'legacyfuel', 'ox_fuel', 'cdn-fuel', 'ps-fuel', 'qb-fuel', 'lc_fuel', 'none'
+    -- Set to 'none' to disable fuel handling
+    fuelSystem = 'legacyfuel',
+    
+    -- Vehicle key system integration
+    -- Options: 'qb-vehiclekeys', 'wasabi_carlock', 'cd_garage', 'loaf_keysystem', 'okokGarage', 'none'
+    -- Set to 'none' to disable key handling
+    keySystem = 'wasabi_carlock',
+    
+    -- Vehicle certification groups...
+}
+```
+
+### Supported Fuel Systems
+
+| Config Value | Resource Export |
+|--------------|-----------------|
+| `legacyfuel` | `exports['LegacyFuel']:SetFuel(veh, 100)` |
+| `ox_fuel` | `exports['ox_fuel']:SetFuel(veh, 100)` |
+| `cdn-fuel` | `exports['cdn-fuel']:SetFuel(veh, 100)` |
+| `ps-fuel` | `exports['ps-fuel']:SetFuel(veh, 100)` |
+| `qb-fuel` | `exports['qb-fuel']:SetFuel(veh, 100)` |
+| `lc_fuel` | `exports['lc_fuel']:SetFuel(veh, 100)` |
+| `none` | Disabled |
+
+### Supported Key Systems
+
+| Config Value | Resource Export |
+|--------------|-----------------|
+| `qb-vehiclekeys` | `exports['qb-vehiclekeys']:GiveKeys(plate)` |
+| `wasabi_carlock` | `exports['wasabi_carlock']:GiveKey(plate)` |
+| `cd_garage` | `exports['cd_garage']:GiveKey(plate)` |
+| `loaf_keysystem` | `exports['loaf_keysystem']:GiveKey(plate)` |
+| `okokGarage` | `exports['okokGarage']:GiveKey(plate)` |
+| `none` | Disabled |
+
+Set either to `'none'` to disable that system entirely.
+
 ## Version
 
-- Current release: **v1.6**
+- Current release: **v1.8**
 - Baseline release: **v1.0**
 
-See [CHANGELOG.md](CHANGELOG.md) for full version history.
+See `CHANGELOG.md` for full version history.
+
+## v1.8 Highlights
+
+- **Parameter Examples**: Custom commands can now include an "Example Format" field (e.g., `id time`, `[job_name] [min_job_grade]`, `plate`). Displayed as a hint in the parameter input modal.
+- **Custom Parameter Input Modal**: Replaced browser `prompt()` with a dark-themed custom modal matching the Admin Hub UI. Includes Cancel/Run buttons and example hint.
+- **Simplified Parameter Workflow**: "Has Parameters" checkbox replaces parameter name input. When checked, clicking the command shows a single input box with the example format shown as a hint.
+- **Vehicle Admin & Ped Admin Caching**: Both menus now use cached data whenever available (not just when minimized), eliminating redundant database fetches when switching between Admin Hub and admin menus.
+- **Parameters Column**: Changed from TEXT to boolean TINYINT(1) for cleaner storage.
+
+### Changed
+- Parameter input uses custom dark-themed modal instead of browser `prompt()`.
+- "Has Parameters" checkbox replaces parameter name text field in command creation modal.
+- Example format now displayed in parameter input modal as a hint.
+- Vehicle Admin and Ped Admin use cached data whenever available, eliminating redundant database fetches.
+
+### Fixed
+- **Admin Hub built-in command execution**: Fixed built-in commands (Trade Admin, Buyer Admin, Ped Admin, Vehicle Spawner Admin) not opening from Admin Hub. The issue was `closeMenu()` clearing cached data before the menu could open.
+- Admin Hub parameter input uses custom dark-themed modal instead of browser `prompt()`.
+- Vehicle Admin and Ped Admin no longer refetch data on every open when cached data exists.
+- Parameter example format now correctly displays in the input modal hint.
+- Vehicle Admin and Ped Admin now properly use cached data when switching between Admin Hub and admin menus (not just when minimized).
+- Fixed export names for fuel/key systems to match actual resource exports (e.g., `LegacyFuel`, `wasabi_carlock`).
+
+## v1.7 Highlights
+
+- **Admin Hub**: A new central administration interface that replaces the need to remember multiple admin commands. Features:
+  - Built-in Exchange category containing Trade Admin, Buyer Admin, Ped Admin, and Vehicle Spawner Admin
+  - Custom command management with parameterized support
+  - Visual command interface with icons, descriptions, and permission system
+  - Direct execution of server commands with parameter input prompts
+  - Role-based access control for different command types
+- **Parameterized Commands**: Custom commands can define parameter names (e.g., `jail id time`). When clicked, they show an input prompt where admins fill in values runtime (e.g., `player123 30 minutes`)
+- **Command Categories**: Organized command management with built-in Exchange category and support for custom categories
+- **Visual Admin Interface**: Dark theme with command cards, sidebar navigation, modal forms for adding/editing commands
+- **Permission System**: Each command can have custom permission requirements (group.admin, command.add_ace, etc.)
+- **SQL Schema**: `admin_hub_schema.sql` with `item_exchange_admin_categories` and `item_exchange_admin_commands` tables
+- **Backward Compatibility**: Existing database tables are automatically updated if they exist
+
+### Changed
+- `/exchange` command now opens the new Admin Hub instead of the ox_lib context menu
+- All existing admin commands (Trade Admin, Buyer Admin, Ped Admin, Vehicle Spawner Admin) are now accessible through the Exchange category in the Admin Hub
+- Updated README documentation to reflect the new Admin Hub interface
+
+### Fixed
+- MySQL callback bug fixes in vehicle admin handlers (previously silently swallowed results)
+- Removed stray duplicate `end)` in vehicle admin server handler
 
 ## v1.6 Highlights
 
-- **Admin panel minimize/restore**: Vehicle Admin and Ped Admin panels can be minimized via the header button so admins can walk around in-game. All unsaved form data (certs, vehicles, ped fields, edit state) is preserved and restored when the panel is reopened. The panel can also be reopened via command while minimized without losing state.
-- **Vehicle admin inline edit**: Certs and vehicles in the Vehicle Spawner Admin now have an Edit button on each row that pre-fills the add form for quick inline editing.
-- **Vehicle admin inline delete confirm**: Delete buttons reveal an inline Confirm/Cancel panel instead of using the browser `confirm()` dialog.
-- **Vehicle return context menu**: "Return Vehicle" now opens an ox_lib context menu listing all nearby allowed vehicles with name, plate, and distance. The vehicle you are sitting in appears at the top. Select a vehicle and confirm to return it.
-- **Vehicle admin add fix**: Fixed `vehicleAdminAddCert` and `vehicleAdminAddVehicle` server handlers silently failing due to a `MySQL.insert.await` callback bug.
+- Vehicle Spawner ped type (`vehicle_spawner`) with grouped spawner IDs.
+- Vehicle Spawner admin data model and schema (`vehicle_spawner_certs`, `vehicle_spawner_vehicles`).
+- Vehicle admin support for per-spawner assignment of certs and vehicles.
+- Job/job-type gate support for vehicle spawner ped target access.
+- Per-vehicle `allowed_jobs` visibility lock in menu (job name or job type).
+- Per-vehicle customization fields:
+  - `livery`
+  - `extras`
+  - `mod_engine`
+- Per-ped vehicle spawn coordinate fields in ped data:
+  - `spawn_x`, `spawn_y`, `spawn_z`, `spawn_w`
+- Vehicle preview option in spawner menu with `Press E` return behavior.
+- Vehicle return menu action with tracked count decrement and confirmation flow.
+- Startup reset for tracked spawned-vehicle counts.
+- New ped types:
+  - `decoration` (no target)
+  - `export` (custom client/server export action)
 
-## v1.5 Highlights
+### Changed
+- `/exchange` launcher includes Vehicle Spawner Admin entry (permission/config dependent).
+- Vehicle availability now supports DB-driven cert/vehicle definitions by spawner ID.
+- Vehicle spawner menu and spawn pipeline apply admin-defined livery/extras/engine settings.
+- Trader/Buyer UX improvements:
+  - Disabled "Missing" action state when inventory requirements are not met.
+  - Amount field auto-fills from available player inventory.
 
-- Vehicle Spawner system with dedicated `vehicle_spawner` peds.
-- Vehicle Spawner admin support in `/exchange` and `/vehicleadmin` (config-controlled).
-- Vehicle licensing/certification menu filtering by player certification and spawner assignment.
-- Per-vehicle job lock support (`allowed_jobs`) even when multiple jobs can access the same ped.
-- Per-vehicle customization from admin: `livery`, `extras`, and `engine mod`.
-- Per-ped vehicle spawn coordinates (`spawn_x`, `spawn_y`, `spawn_z`, `spawn_w`) from Ped Admin.
-- Vehicle preview flow with menu exit + `Press E` return prompt.
-- Return Vehicle menu option with tracked count removal and startup count reset.
-- Buyer/Trader QoL updates: missing-item disabled button and amount auto-fill.
-- New ped types: `decoration` and `export`.
+### Fixed
+- Vehicle spawner context registration/show flow issues (`ox_lib` context not found).
+- Vehicle admin add form behavior and validation edge cases.
+- Vehicle spawner target label fallback behavior and menu-title usage.
 
 ## v1.0 Documentation (Original)
 
-## Features
+### Features
 
 - Database-managed trader peds for item-for-item exchanges.
-- Database-managed buyer peds for selling player items for cash or money items.
+- Database-managed buyer peds for item-to-cash selling.
 - Optional map blips per ped with a FiveM blip sprite selector in `/pedadmin`.
 - In-game admin menus for adding, editing, moving, enabling, disabling, and deleting peds and offers.
-- Separate Trader ID and Buyer ID groups, so different peds can show different menus.
+- Trader ID and Buyer ID grouping model.
 - Automatic database table creation and optional config-based seeding.
 - Optional included web UI for player menus and admin tools.
 - Fallback ox_lib context menu for trader exchanges.
 - Inventory checks before trades complete, including item count and carry capacity.
 - Fixed or random trade rewards, such as `1`, `1-3`, or `random(1,3)`.
 
-## Requirements
+### Requirements
 
 Make sure these resources are installed and started before this resource:
 
@@ -62,7 +293,7 @@ Optional:
 
 If `qb-core` is not running, buyer payouts use the configured ox_inventory money item instead.
 
-## Installation
+### Installation
 
 1. Place this folder in your server resources directory.
 2. Rename the folder to something simple, such as `item_exchange`.
@@ -97,7 +328,7 @@ On startup, the resource automatically creates these database tables if they do 
 
 You can also import `item_exchange_trades.sql`, `item_exchange_buyers.sql`, and `item_exchange_peds.sql` manually if you prefer to create the tables yourself.
 
-## Quick Start
+### Quick Start
 
 The default config creates one trader-style exchange using these items:
 
@@ -115,308 +346,3 @@ After the resource is running:
 5. Enter the amount you want to trade or sell.
 
 The script multiplies the configured cost, reward, or payout by the selected amount. The exchange only completes when the player has enough required items and enough inventory space for the reward or payout item.
-
-## Configuration Overview
-
-Most settings live in `config.lua`.
-
-```lua
-Config.Menu = {
-    id = 'item_exchange_menu',
-    title = 'Item Exchange',
-    useWebUi = true
-}
-```
-
-Set `Config.Menu.useWebUi = false` if you want trader menus to use the ox_lib context menu instead of the included web UI. Buyer menus and admin menus use the web UI.
-
-```lua
-Config.BuyerMoneyItem = 'money'
-Config.BuyerQbMoneyAccount = 'cash'
-```
-
-Buyer payouts use `Config.BuyerQbMoneyAccount` when `qb-core` is started. If `qb-core` is not started, payouts use the ox_inventory item from `Config.BuyerMoneyItem`.
-
-## Managing Peds
-
-Open the ped editor with:
-
-```txt
-/pedadmin
-```
-
-The ped admin menu lets you:
-
-- Add trader or buyer peds.
-- Use your current player position for ped coordinates.
-- Edit ped model, group ID, target label, target icon, scenario, menu title, and optional map blip.
-- Teleport to existing peds.
-- Enable or disable peds.
-- Delete peds from the database.
-
-Ped changes are saved to the database and broadcast to all clients. Players do not need `Config.Peds` entries for peds created through `/pedadmin`.
-
-## Trader Peds
-
-Trader peds exchange one item for another. In `/pedadmin`, set Type to `Trader` and choose the Trader ID group the ped should display.
-
-The old config seed format is still supported if you want to prefill the database on first startup:
-
-```lua
-{
-    enabled = true,
-    model = 's_m_m_dockwork_01',
-    coords = vec4(0.0, 0.0, 0.0, 0.0),
-    scenario = 'WORLD_HUMAN_CLIPBOARD',
-    targetLabel = 'Trade Ingots',
-    targetIcon = 'fa-solid fa-hammer',
-    menuTitle = 'Ingot Exchange',
-    blipEnabled = true,
-    blipSprite = 605,
-    trader = 2
-}
-```
-
-The Trader ID is a menu group. A ped with Trader ID `1` shows enabled trades assigned to Trader ID `1`. A ped with Trader ID `2` shows enabled trades assigned to Trader ID `2`.
-
-## Buyer Peds
-
-Buyer peds remove items from players and pay money. In `/pedadmin`, set Type to `Buyer` and choose the Buyer ID group the ped should display.
-
-The old config seed format is still supported if you want to prefill the database on first startup:
-
-```lua
-{
-    enabled = true,
-    model = 's_m_m_dockwork_01',
-    coords = vec4(0.0, 0.0, 0.0, 0.0),
-    scenario = 'WORLD_HUMAN_CLIPBOARD',
-    targetLabel = 'Sell Ingots',
-    targetIcon = 'fa-solid fa-dollar-sign',
-    menuTitle = 'Ingot Buyer',
-    blipEnabled = true,
-    blipSprite = 351,
-    buyer = 1
-}
-```
-
-The Buyer ID is a menu group. A ped with Buyer ID `1` shows enabled buyer offers assigned to Buyer ID `1`.
-
-## Admin Commands
-
-Use these commands in game as an admin:
-
-```txt
-/exchange
-/exchangeadmin
-/buyeradmin
-/pedadmin
-```
-
-`/exchange` opens a small ox_lib menu where you can choose Trade Admin, Buyer Admin, or Ped Admin. It only shows the options your player has permission to use.
-
-The commands are protected by ACE permissions:
-
-```cfg
-add_ace group.admin command.exchangeadmin allow
-add_ace group.admin command.buyeradmin allow
-add_ace group.admin command.pedadmin allow
-```
-
-Console cannot open the menus. If any admin command is run from the server console, it prints a message telling you to use it in game.
-
-## Vehicle Spawner Admin
-
-Open the vehicle spawner editor with:
-
-```txt
-/vehicleadmin
-```
-
-The vehicle spawner admin menu lets you:
-
-- Add, edit, and delete certifications (licenses) assigned to each spawner.
-- Add, edit, and delete vehicles within each certification.
-- Edit a cert or vehicle inline by clicking the Edit button on its row.
-- Delete entries with an inline Confirm/Cancel panel.
-- Enable or disable certs and vehicles.
-- **Minimize** the panel with the `—` button in the header to walk around in-game, then reopen it without losing unsaved form data.
-
-Each certification has a label, type, and max spawn limit. Vehicles within a cert are what players see in the spawner menu.
-
-## Managing Trades
-
-Open the trade editor with:
-
-```txt
-/exchangeadmin
-```
-
-The trade admin menu lets you:
-
-- Add new trades.
-- Edit existing trades.
-- Search ox_inventory item labels or spawn names.
-- Move a trade to another Trader ID.
-- Teleport to configured trader peds.
-- Enable or disable trades.
-- Delete trades from the database.
-
-When adding or editing a trade, item fields must use valid ox_inventory item spawn names.
-
-Receive counts can be fixed or random:
-
-```txt
-1
-1-3
-random(1,3)
-```
-
-`1` gives one reward item per selected amount. `1-3` and `random(1,3)` roll a random amount between 1 and 3 for each selected amount.
-
-Example: if a player chooses amount `5` on a trade with a receive formula of `1-3`, the script rolls between 1 and 3, then multiplies that roll by 5.
-
-## Managing Buyers
-
-Open the buyer editor with:
-
-```txt
-/buyeradmin
-```
-
-The buyer admin menu lets you:
-
-- Add new buyer offers.
-- Edit existing offers.
-- Search ox_inventory item labels or spawn names.
-- Move an offer to another Buyer ID.
-- Teleport to configured buyer peds.
-- Enable or disable offers.
-- Delete offers from the database.
-
-Each buyer offer has an item count and a cash price. For example, an offer with Item Count `2` and Cash Price `50` removes `2x` of the item and pays `$50` for each amount the player sells.
-
-If the player sells amount `3`, the total result is:
-
-- Items removed: `6x`
-- Money paid: `$150`
-
-## Database Seeding
-
-`Config.Trades`, `Config.Buyers`, and `Config.Peds` are seed data. They are inserted only when the matching database table is empty and seeding is enabled.
-
-```lua
-Config.Database = {
-    table = 'item_exchange_trades',
-    seedFromConfig = true
-}
-
-Config.BuyerDatabase = {
-    table = 'item_exchange_buyers',
-    seedFromConfig = true
-}
-
-Config.PedDatabase = {
-    table = 'item_exchange_peds',
-    seedFromConfig = true
-}
-```
-
-After the first startup, use `/exchangeadmin`, `/buyeradmin`, and `/pedadmin` to manage live database entries. Editing `Config.Trades`, `Config.Buyers`, or `Config.Peds` later will not overwrite existing database rows unless you empty the relevant table first.
-
-## Trade Seed Example
-
-Add seed trades to `Config.Trades`:
-
-```lua
-{
-    trader = 1,
-    label = 'Buy Washed Stone',
-    description = 'Trade dirty stone for washed stone',
-    receive = {
-        item = 'washed_stone',
-        count = '1-3'
-    },
-    cost = {
-        item = 'dirty_stone',
-        count = 2
-    }
-}
-```
-
-Make sure every item name exists in your ox_inventory item definitions.
-
-## Buyer Seed Example
-
-Add seed buyer offers to `Config.Buyers`:
-
-```lua
-{
-    buyer = 1,
-    label = 'Sell Steel Ingot',
-    description = 'Sell steel ingots for cash',
-    item = 'steel',
-    count = 1,
-    price = 25
-}
-```
-
-## Ped Seed Example
-
-You usually do not need to seed peds because `/pedadmin` can create them in game. If you want starter peds on a fresh database, add entries to `Config.Peds`:
-
-```lua
-{
-    enabled = true,
-    model = 's_m_m_dockwork_01',
-    coords = vec4(0.0, 0.0, 0.0, 0.0),
-    scenario = 'WORLD_HUMAN_CLIPBOARD',
-    targetLabel = 'Trader',
-    targetIcon = 'fa-solid fa-hand-holding-dollar',
-    menuTitle = 'The Exchange',
-    trader = 1
-}
-```
-
-## Troubleshooting
-
-### The ped does not appear
-
-- Make sure the ped entry has `enabled = true`.
-- Confirm the model name is valid.
-- Confirm the coordinates are correct.
-- Confirm the ped exists in `/pedadmin` or in the `item_exchange_peds` database table.
-- Check that `ox_lib` loaded before this resource.
-
-### The target option does not show
-
-- Make sure `ox_target` is started before this resource.
-- Confirm the ped spawned successfully.
-- Check that `targetLabel` and `targetIcon` are set in the ped config.
-
-### The admin command says no permission
-
-- Confirm your server.cfg has the correct ACE lines.
-- Confirm your player is in the group that receives those permissions.
-- Restart the server or reload permissions after changing ACE config.
-
-### Trades or buyers do not show in the menu
-
-- Confirm the trade or buyer offer is enabled.
-- Confirm the ped's `trader` or `buyer` number matches the offer's Trader ID or Buyer ID.
-- Confirm the database tables have rows.
-- Check the server console for oxmysql errors.
-
-### Buyer payouts are not working
-
-- If using QBCore money, make sure `qb-core` is started and `Config.BuyerQbMoneyAccount` is valid.
-- If not using QBCore money, make sure `Config.BuyerMoneyItem` exists in ox_inventory.
-- Confirm the player can carry the payout item when using the ox_inventory fallback.
-
-## Notes
-
-- Trader peds use a Trader ID group.
-- Buyer peds use a Buyer ID group.
-- Database rows are the live source of truth after seeding.
-- Deleted offers are removed from the database, not just hidden.
-- Disabled offers stay in the database but are hidden from players.

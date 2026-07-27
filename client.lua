@@ -200,8 +200,36 @@ local function spawnSelectedVehicle(ped, certType, vehicle, isPreview)
     else
         local plate = GetVehicleNumberPlateText(veh)
         local netId = VehToNet(veh)
-        exports.wasabi_carlock:GiveKey(plate)
-        exports["lc_fuel"]:SetFuel(veh, 100)
+
+        -- Give vehicle keys based on configured key system
+        local keySystem = Config.VehicleSpawner and Config.VehicleSpawner.keySystem or 'none'
+        if keySystem == 'qb-vehiclekeys' then
+            exports['qb-vehiclekeys']:GiveKeys(plate)
+        elseif keySystem == 'wasabi_carlock' then
+            exports['wasabi_carlock']:GiveKey(plate)
+        elseif keySystem == 'cd_garage' then
+            exports['cd_garage']:GiveKey(plate)
+        elseif keySystem == 'loaf_keysystem' then
+            exports['loaf_keysystem']:GiveKey(plate)
+        elseif keySystem == 'okokGarage' then
+            exports['okokGarage']:GiveKey(plate)
+        end
+
+        -- Set fuel based on configured fuel system
+        local fuelSystem = Config.VehicleSpawner and Config.VehicleSpawner.fuelSystem or 'none'
+        if fuelSystem == 'legacyfuel' then
+            exports['LegacyFuel']:SetFuel(veh, 100)
+        elseif fuelSystem == 'ox_fuel' then
+            exports['ox_fuel']:SetFuel(veh, 100)
+        elseif fuelSystem == 'cdn-fuel' then
+            exports['cdn-fuel']:SetFuel(veh, 100)
+        elseif fuelSystem == 'ps-fuel' then
+            exports['ps-fuel']:SetFuel(veh, 100)
+        elseif fuelSystem == 'qb-fuel' then
+            exports['qb-fuel']:SetFuel(veh, 100)
+        elseif fuelSystem == 'lc_fuel' then
+             exports["lc_fuel"]:SetFuel(veh, 100)
+        end
 
         TriggerServerEvent('item_exchange:server:vehicleSpawned', certType, netId, vehicle.model, plate)
         lib.notify({
@@ -677,7 +705,9 @@ local function openBuyerAdminMenu()
 end
 
 local function openPedAdminMenu()
-    if pedAdminMinimized and cachedPedAdminData then
+    if Config.Debug then print('[AdminHub] openPedAdminMenu called') end
+    if cachedPedAdminData then
+        if Config.Debug then print('[AdminHub] Using cached ped admin data') end
         pedAdminMinimized = false
         SetNuiFocus(true, true)
         SendNUIMessage({
@@ -688,6 +718,7 @@ local function openPedAdminMenu()
         return
     end
 
+    if Config.Debug then print('[AdminHub] Fetching fresh ped admin data') end
     local peds = lib.callback.await('item_exchange:server:getAdminPeds', false)
 
     if not peds then
@@ -709,7 +740,9 @@ local function openPedAdminMenu()
 end
 
 local function openVehicleSpawnerAdminMenu()
-    if vehicleAdminMinimized and cachedVehicleAdminData then
+    if Config.Debug then print('[AdminHub] openVehicleSpawnerAdminMenu called') end
+    if cachedVehicleAdminData then
+        if Config.Debug then print('[AdminHub] Using cached vehicle admin data') end
         vehicleAdminMinimized = false
         SetNuiFocus(true, true)
         SendNUIMessage({
@@ -721,6 +754,7 @@ local function openVehicleSpawnerAdminMenu()
         return
     end
 
+    if Config.Debug then print('[AdminHub] Fetching fresh vehicle admin data') end
     local data = lib.callback.await('item_exchange:server:getVehicleAdminData', false)
 
     if not data then
@@ -742,60 +776,60 @@ local function openVehicleSpawnerAdminMenu()
     })
 end
 
-local function openExchangeAdminLauncher(access)
-    local options = {}
+local function openAdminHub(permissions)
+    local data = lib.callback.await('item_exchange:server:getAdminHubData', false)
 
-    if access and access.trades then
-        options[#options + 1] = {
+    local builtIn = {}
+    if permissions and permissions.trades then
+        builtIn[#builtIn + 1] = {
+            id = 'builtin_trades',
             title = 'Trade Admin',
-            description = ('Open /%s'):format(Config.Admin.command),
-            icon = 'right-left',
-            onSelect = openAdminMenu
+            description = 'Add, edit, and manage trade offers',
+            command = 'exchangeadmin',
+            icon = '🔄',
+            permission = 'trades'
         }
     end
-
-    if access and access.buyers then
-        options[#options + 1] = {
+    if permissions and permissions.buyers then
+        builtIn[#builtIn + 1] = {
+            id = 'builtin_buyers',
             title = 'Buyer Admin',
-            description = ('Open /%s'):format(Config.BuyerAdmin.command),
-            icon = 'dollar-sign',
-            onSelect = openBuyerAdminMenu
+            description = 'Add, edit, and manage buyer offers',
+            command = 'buyeradmin',
+            icon = '💰',
+            permission = 'buyers'
         }
     end
-
-    if access and access.peds then
-        options[#options + 1] = {
+    if permissions and permissions.peds then
+        builtIn[#builtIn + 1] = {
+            id = 'builtin_peds',
             title = 'Ped Admin',
-            description = ('Open /%s'):format(Config.PedAdmin.command),
-            icon = 'user-gear',
-            onSelect = openPedAdminMenu
+            description = 'Manage trader, buyer, and vehicle spawner peds',
+            command = 'pedadmin',
+            icon = '👤',
+            permission = 'peds'
         }
     end
-
-    if access and access.vehicles then
-        options[#options + 1] = {
+    if permissions and permissions.vehicles then
+        builtIn[#builtIn + 1] = {
+            id = 'builtin_vehicles',
             title = 'Vehicle Spawner Admin',
-            description = ('Open /%s'):format(Config.VehicleSpawnerAdmin.command),
-            icon = 'fa-solid fa-car',
-            onSelect = openVehicleSpawnerAdminMenu
+            description = 'Manage certifications, vehicles, and spawn settings',
+            command = 'vehicleadmin',
+            icon = '🚗',
+            permission = 'vehicles'
         }
     end
 
-    if #options < 1 then
-        lib.notify({
-            description = 'You do not have permission to use this menu.',
-            type = 'error'
-        })
-        return
-    end
-
-    lib.registerContext({
-        id = 'item_exchange_admin_launcher',
-        title = 'Item Exchange Admin',
-        options = options
+    SetNuiFocus(true, true)
+    SendNUIMessage({
+        action = 'openAdminHub',
+        permissions = permissions,
+        builtIn = builtIn,
+        categories = data and data.categories or {},
+        customCommands = data and data.commands or {},
+        debug = Config.Debug
     })
-
-    lib.showContext('item_exchange_admin_launcher')
 end
 
 RegisterNUICallback('adminAddTrade', function(data, cb)
@@ -1008,6 +1042,78 @@ RegisterNUICallback('vehicleAdminMinimize', function(_, cb)
     cb({ ok = true })
 end)
 
+RegisterNUICallback('adminHubAddCategory', function(data, cb)
+    TriggerServerEvent('item_exchange:server:adminHubAddCategory', data)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('adminHubUpdateCategory', function(data, cb)
+    TriggerServerEvent('item_exchange:server:adminHubUpdateCategory', data)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('adminHubDeleteCategory', function(data, cb)
+    TriggerServerEvent('item_exchange:server:adminHubDeleteCategory', data.id)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('adminHubAddCommand', function(data, cb)
+    TriggerServerEvent('item_exchange:server:adminHubAddCommand', data)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('adminHubUpdateCommand', function(data, cb)
+    TriggerServerEvent('item_exchange:server:adminHubUpdateCommand', data)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('adminHubDeleteCommand', function(data, cb)
+    TriggerServerEvent('item_exchange:server:adminHubDeleteCommand', data.id)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('adminHubRunBuiltIn', function(data, cb)
+    if Config.Debug then print('[AdminHub] adminHubRunBuiltIn received:', data.command) end
+    local cmd = data.command
+    if cmd == 'exchangeadmin' then
+        if Config.Debug then print('[AdminHub] Opening Trade Admin') end
+        openAdminMenu()
+    elseif cmd == 'buyeradmin' then
+        if Config.Debug then print('[AdminHub] Opening Buyer Admin') end
+        openBuyerAdminMenu()
+    elseif cmd == 'pedadmin' then
+        if Config.Debug then print('[AdminHub] Opening Ped Admin') end
+        openPedAdminMenu()
+    elseif cmd == 'vehicleadmin' then
+        if Config.Debug then print('[AdminHub] Opening Vehicle Admin') end
+        openVehicleSpawnerAdminMenu()
+    end
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('adminHubRunCustomCommand', function(data, cb)
+    TriggerServerEvent('item_exchange:server:adminHubRunCommand', data)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('adminHubFetchData', function(_, cb)
+    local data = lib.callback.await('item_exchange:server:getAdminHubData', false)
+    SendNUIMessage({
+        action = 'adminHubUpdateData',
+        categories = data and data.categories or {},
+        customCommands = data and data.commands or {}
+    })
+    cb({ ok = true })
+end)
+
+RegisterNetEvent('item_exchange:client:adminHubRunCommand', function(commandStr)
+    ExecuteCommand(commandStr:gsub('^/', ''))
+end)
+
+RegisterNetEvent('item_exchange:client:adminHubRunEvent', function(eventName)
+    TriggerEvent(eventName)
+end)
+
 local function openOxAdminMenu()
     local trades = lib.callback.await('item_exchange:server:getAdminTrades', false)
 
@@ -1056,7 +1162,9 @@ RegisterNetEvent('item_exchange:client:openPedAdminMenu', openPedAdminMenu)
 
 RegisterNetEvent('item_exchange:client:openVehicleSpawnerAdminMenu', openVehicleSpawnerAdminMenu)
 
-RegisterNetEvent('item_exchange:client:openExchangeAdminLauncher', openExchangeAdminLauncher)
+RegisterNetEvent('item_exchange:client:openExchangeAdminLauncher', function(access)
+    openAdminHub(access)
+end)
 
 RegisterNetEvent('item_exchange:client:refreshVehicleAdmin', function()
     if vehicleAdminMinimized then
@@ -1143,6 +1251,10 @@ RegisterNetEvent('item_exchange:client:refreshPedAdminMenu', function()
         return
     end
     openPedAdminMenu()
+end)
+
+RegisterNetEvent('item_exchange:client:refreshAdminHub', function()
+    SendNUIMessage({ action = 'refreshAdminHub' })
 end)
 
 local function deleteExchangePeds()

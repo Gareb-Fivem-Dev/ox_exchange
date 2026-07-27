@@ -1,6 +1,7 @@
 fx_version 'cerulean'
 game 'gta5'
 lua54 'yes'
+version '1.8.0'
 
 description 'Configurable ox_lib item exchange menu'
 author 'Gareb - Torrid RP'
@@ -8,8 +9,8 @@ author 'Gareb - Torrid RP'
 ui_page 'web/index.html'
 
 shared_scripts {
-    "@AdvancedParking/fixDeleteVehicle.lua",
-    "@AdvancedParking/handleAttachedEntities.lua",
+    "@AdvancedParking/fixDeleteVehicle.lua",         ---hash out of you do not have AdvancedParking
+    "@AdvancedParking/handleAttachedEntities.lua",   ---hash out of you do not have AdvancedParking
     '@ox_lib/init.lua',
     'config.lua'
 }
@@ -27,7 +28,8 @@ server_scripts {
 files {
     'web/index.html',
     'web/style.css',
-    'web/script.js'
+    'web/script.js',
+    'web/img/logo.png'
 }
 
 dependencies {

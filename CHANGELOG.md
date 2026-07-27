@@ -2,24 +2,64 @@
 
 All notable changes to this project are documented in this file.
 
-## [1.6] - 2026-07-26
+## [1.8] - 2026-07-26
 
 ### Added
-- **Admin panel minimize/restore**: Vehicle Admin and Ped Admin panels can be minimized with the `—` button in the header, allowing admins to walk around in-game without closing the panel. All unsaved form data is preserved across minimize/restore cycles. Panels can also be reopened using the same command while minimized.
-- **Vehicle admin edit buttons**: Licenses (certs) and vehicles in the Vehicle Spawner Admin can now be edited inline via an Edit button on each row. Clicking Edit pre-fills the add form with the entry's current values and changes the button to "Save Changes".
-- **Vehicle admin inline delete confirmation**: Delete buttons now reveal an inline Confirm/Cancel panel directly in the row instead of using the browser `confirm()` dialog.
-- **Vehicle return context menu**: Clicking "Return Vehicle" now opens an ox_lib context menu listing all nearby allowed vehicles with their name, plate, and distance, instead of auto-selecting the nearest one. The vehicle you are currently in is sorted to the top. Selecting a vehicle shows a confirmation dialog before returning.
-- **Vehicle admin update server events**: `vehicleAdminUpdateCert` and `vehicleAdminUpdateVehicle` server events with full validation.
+- **Admin Hub Parameter Examples**: Custom commands can now include an "Example Format" field (e.g., `id time`, `[job_name] [min_job_grade]`, `plate`). This example is displayed in the parameter input modal to guide admins on the required format.
+- **Custom Parameter Input Modal**: Replaced browser `prompt()` with a custom dark-themed modal that matches the Admin Hub UI. Includes Cancel/Run buttons and displays the example format as a hint.
+- **Simplified Parameter Workflow**: "Has Parameters" checkbox replaces parameter name input. When checked, clicking the command shows a single input box with the example format shown as a hint.
+- **Vehicle Admin & Ped Admin Caching**: Both menus now use cached data whenever available (not just when minimized), eliminating redundant database fetches when switching between Admin Hub and admin menus.
+- **Example Format Field**: Added "Example Format" input to custom command creation modal. Shows in the parameter input modal as a hint (e.g., `id time`, `[job_name] [min_job_grade]`, `plate`).
+- **Parameters Column Type**: Changed `parameters` column from TEXT to TINYINT(1) boolean for cleaner storage.
+- **Vehicle Spawner Fuel & Key System Configuration**: Added configurable fuel and key system integrations for vehicle spawning:
+  - **Fuel Systems**: `legacyfuel` (LegacyFuel), `ox_fuel`, `cdn-fuel`, `ps-fuel`, `qb-fuel`, `lc_fuel`, `none`
+  - **Key Systems**: `qb-vehiclekeys`, `wasabi_carlock`, `cd_garage`, `loaf_keysystem`, `okokGarage`, `none`
+  - Set to `'none'` to disable either system
+- **Debug Logging System**: Added `Config.Debug` toggle for debugging. When enabled, logs NUI messages, postNui calls, and built-in command execution in both browser console (F12) and server console.
 
 ### Changed
-- Vehicle return menu item description updated to reflect the new context menu behavior.
-- Vehicle admin row actions now flex-wrap to accommodate three buttons (Edit, Enable/Disable, Delete).
+- Parameter input now uses a custom UI modal matching the Admin Hub dark theme instead of browser `prompt()`.
+- "Has Parameters" checkbox replaces parameter name text field in command creation modal.
+- Example format is now displayed in the parameter input modal as a hint.
+- Vehicle Admin and Ped Admin now use cached data whenever available (not just when minimized), eliminating redundant database fetches when switching between Admin Hub and admin menus.
+- `parameters` column in `item_exchange_admin_commands` changed from TEXT to TINYINT(1) boolean.
+- Vehicle Spawner Admin now supports configurable fuel and key system integrations with multiple popular resources.
 
 ### Fixed
-- `vehicleAdminAddCert` and `vehicleAdminAddVehicle` server handlers no longer silently swallow results. The `MySQL.insert.await` calls were previously followed by a callback function that was never executed by oxmysql's synchronous API. `notify()` and `TriggerClientEvent` now run after the `.await` call completes.
-- Stray duplicate `end)` removed from the `vehicleAdminAddVehicle` handler in server.lua.
+- **Admin Hub built-in command execution**: Fixed built-in commands (Trade Admin, Buyer Admin, Ped Admin, Vehicle Spawner Admin) not opening from Admin Hub. The issue was `closeMenu()` clearing cached data before the menu could open.
+- **Admin Hub parameter example field**: Fixed "Example Format" input not appearing immediately when "Has Parameters" checkbox is checked. Now toggles visibility immediately without requiring save/re-edit.
+- Admin Hub parameter input now uses custom dark-themed modal instead of browser `prompt()`.
+- Vehicle Admin and Ped Admin no longer refetch data on every open when cached data exists.
+- Parameter example format now correctly displays in the input modal hint.
+- Vehicle Admin and Ped Admin now properly use cached data when switching between Admin Hub and admin menus (not just when minimized).
+- Fixed export names for fuel/key systems to match actual resource exports (e.g., `LegacyFuel`, `wasabi_carlock`).
 
-## [1.5] - 2026-07-22
+## [1.7] - 2026-07-26
+
+### Added
+- **Admin Hub**: A new central administration interface that replaces the need to remember multiple admin commands. Features:
+  - Built-in Exchange category containing Trade Admin, Buyer Admin, Ped Admin, and Vehicle Spawner Admin
+  - Custom command management with parameterized support
+  - Visual command interface with icons, descriptions, and permission system
+  - Direct execution of server commands with parameter input prompts
+  - Role-based access control for different command types
+- **Parameterized Commands**: Custom commands can define parameter names (e.g., `jail id time`). When clicked, they show an input prompt where admins fill in values runtime (e.g., `player123 30 minutes`)
+- **Command Categories**: Organized command management with built-in Exchange category and support for custom categories
+- **Visual Admin Interface**: Dark theme with command cards, sidebar navigation, modal forms for adding/editing commands
+- **Permission System**: Each command can have custom permission requirements (group.admin, command.add_ace, etc.)
+- **SQL Schema**: `admin_hub_schema.sql` with `item_exchange_admin_categories` and `item_exchange_admin_commands` tables
+- **Backward Compatibility**: Existing database tables are automatically updated if they exist
+
+### Changed
+- `/exchange` command now opens the new Admin Hub instead of the ox_lib context menu
+- All existing admin commands (Trade Admin, Buyer Admin, Ped Admin, Vehicle Spawner Admin) are now accessible through the Exchange category in the Admin Hub
+- Updated README documentation to reflect the new Admin Hub interface
+
+### Fixed
+- MySQL callback bug fixes in vehicle admin handlers (previously silently swallowed results)
+- Removed stray duplicate `end)` in vehicle admin server handler
+
+## [1.6] - 2026-07-22
 
 ### Added
 - Vehicle Spawner ped type (`vehicle_spawner`) with grouped spawner IDs.

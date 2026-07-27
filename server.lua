@@ -781,6 +781,207 @@ local function createVehicleSpawnerTables()
     end)
 end
 
+local function createAdminHubTables()
+    MySQL.query.await([[
+        CREATE TABLE IF NOT EXISTS `item_exchange_admin_categories` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `label` VARCHAR(100) NOT NULL,
+            `icon` VARCHAR(50) DEFAULT '⚙️',
+            `sort_order` INT DEFAULT 0,
+            `enabled` TINYINT(1) DEFAULT 1,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ]])
+
+     MySQL.query.await([[
+        CREATE TABLE IF NOT EXISTS `item_exchange_admin_commands` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `category_id` INT NOT NULL,
+            `title` VARCHAR(100) NOT NULL,
+            `description` VARCHAR(255) DEFAULT '',
+            `command` VARCHAR(255) NOT NULL,
+            `icon` VARCHAR(50) DEFAULT '⚙️',
+            `permission` VARCHAR(100) DEFAULT 'admin',
+            `confirm_prompt` VARCHAR(255) DEFAULT '',
+            `parameters` TEXT DEFAULT NULL,
+            `enabled` TINYINT(1) DEFAULT 1,
+            `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (`category_id`) REFERENCES `item_exchange_admin_categories`(`id`) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ]])
+end
+
+lib.callback.register('item_exchange:server:getAdminHubData', function(source)
+    if not isAdmin(source) and not isBuyerAdmin(source) and not isPedAdmin(source) and not isVehicleSpawnerAdmin(source) then
+        return nil
+    end
+
+    local categories = MySQL.query.await('SELECT * FROM item_exchange_admin_categories WHERE enabled = 1 ORDER BY sort_order ASC, id ASC') or {}
+    local commands = MySQL.query.await('SELECT * FROM item_exchange_admin_commands WHERE enabled = 1 ORDER BY id ASC') or {}
+
+    return { categories = categories, commands = commands }
+end)
+
+RegisterNetEvent('item_exchange:server:adminHubAddCategory', function(data)
+    local source = source
+    if not isAdmin(source) then
+        return
+    end
+
+    local label = data.label
+    if not label or label == '' then
+        notify(source, 'Category label is required.', 'error')
+        return
+    end
+
+    MySQL.insert.await('INSERT INTO item_exchange_admin_categories (label, icon, sort_order) VALUES (?, ?, ?)', {
+        label, data.icon or '⚙️', tonumber(data.sort_order) or 0
+    })
+
+    notify(source, 'Category added.', 'success')
+    TriggerClientEvent('item_exchange:client:refreshAdminHub', source)
+end)
+
+RegisterNetEvent('item_exchange:server:adminHubUpdateCategory', function(data)
+    local source = source
+    if not isAdmin(source) then
+        return
+    end
+
+    local id = tonumber(data.id)
+    if not id then
+        notify(source, 'Invalid category ID.', 'error')
+        return
+    end
+
+    local label = data.label
+    if not label or label == '' then
+        notify(source, 'Category label is required.', 'error')
+        return
+    end
+
+    MySQL.update.await('UPDATE item_exchange_admin_categories SET label = ?, icon = ?, sort_order = ? WHERE id = ?', {
+        label, data.icon or '⚙️', tonumber(data.sort_order) or 0, id
+    })
+
+    notify(source, 'Category updated.', 'success')
+    TriggerClientEvent('item_exchange:client:refreshAdminHub', source)
+end)
+
+RegisterNetEvent('item_exchange:server:adminHubDeleteCategory', function(id)
+    local source = source
+    if not isAdmin(source) then
+        return
+    end
+
+    id = tonumber(id)
+    if not id then
+        notify(source, 'Invalid category ID.', 'error')
+        return
+    end
+
+    MySQL.query.await('DELETE FROM item_exchange_admin_categories WHERE id = ?', { id })
+    notify(source, 'Category deleted.', 'success')
+    TriggerClientEvent('item_exchange:client:refreshAdminHub', source)
+end)
+
+RegisterNetEvent('item_exchange:server:adminHubAddCommand', function(data)
+    local source = source
+    if not isAdmin(source) then
+        return
+    end
+
+    local title = data.title
+    local command = data.command
+    local categoryId = tonumber(data.category_id)
+
+    if not title or title == '' then
+        notify(source, 'Command title is required.', 'error')
+        return
+    end
+
+    if not command or command == '' then
+        notify(source, 'Command to run is required.', 'error')
+        return
+    end
+
+    if not categoryId then
+        notify(source, 'Category is required.', 'error')
+        return
+    end
+
+    MySQL.insert.await('INSERT INTO item_exchange_admin_commands (category_id, title, description, command, icon, permission, confirm_prompt, parameters, example) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', {
+        categoryId, title, data.description or '', command, data.icon or '⚙️', data.permission or 'admin', data.confirm_prompt or '', data.parameters or '', data.example or ''
+    })
+
+    notify(source, 'Command added.', 'success')
+    TriggerClientEvent('item_exchange:client:refreshAdminHub', source)
+end)
+
+RegisterNetEvent('item_exchange:server:adminHubUpdateCommand', function(data)
+    local source = source
+    if not isAdmin(source) then
+        return
+    end
+
+    local id = tonumber(data.id)
+    if not id then
+        notify(source, 'Invalid command ID.', 'error')
+        return
+    end
+
+    local title = data.title
+    local command = data.command
+
+    if not title or title == '' then
+        notify(source, 'Command title is required.', 'error')
+        return
+    end
+
+    if not command or command == '' then
+        notify(source, 'Command to run is required.', 'error')
+        return
+    end
+
+    MySQL.update.await('UPDATE item_exchange_admin_commands SET title = ?, description = ?, command = ?, icon = ?, permission = ?, confirm_prompt = ?, parameters = ?, example = ?, category_id = ? WHERE id = ?', {
+        title, data.description or '', command, data.icon or '⚙️', data.permission or 'admin', data.confirm_prompt or '', data.parameters or '', data.example or '', tonumber(data.category_id) or 0, id
+    })
+
+    notify(source, 'Command updated.', 'success')
+    TriggerClientEvent('item_exchange:client:refreshAdminHub', source)
+end)
+
+RegisterNetEvent('item_exchange:server:adminHubDeleteCommand', function(id)
+    local source = source
+    if not isAdmin(source) then
+        return
+    end
+
+    id = tonumber(id)
+    if not id then
+        notify(source, 'Invalid command ID.', 'error')
+        return
+    end
+
+    MySQL.query.await('DELETE FROM item_exchange_admin_commands WHERE id = ?', { id })
+    notify(source, 'Command deleted.', 'success')
+    TriggerClientEvent('item_exchange:client:refreshAdminHub', source)
+end)
+
+RegisterNetEvent('item_exchange:server:adminHubRunCommand', function(data)
+    local source = source
+    local commandStr = data.command
+    if not commandStr or commandStr == '' then
+        return
+    end
+
+    if commandStr:sub(1, 1) ~= '/' then
+        commandStr = '/' .. commandStr
+    end
+
+    TriggerClientEvent('item_exchange:client:adminHubRunCommand', source, commandStr)
+end)
+
 local function getTradeList(filter, includeDisabled)
     local list = {}
 
@@ -1025,6 +1226,7 @@ MySQL.ready(function()
     createBuyerTable()
     createPedTable()
     createVehicleSpawnerTables()
+    createAdminHubTables()
     seedTrades()
     seedBuyers()
     seedPeds()

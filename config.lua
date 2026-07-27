@@ -1,5 +1,7 @@
 Config = {}
 
+Config.Debug = false -- Set to true to enable debug prints in server/client console
+
 Config.Menu = {
     id = 'item_exchange_menu',
     title = 'Item Exchange',
@@ -57,6 +59,16 @@ Config.VehicleSpawner = {
     enabled = true,
     clearOnStart = true, -- Clear spawned vehicle tracking on resource start
     
+    -- Vehicle key system integration
+    -- Options: 'qb-vehiclekeys', 'wasabi_carlock', 'cd_garage', 'loaf_keysystem', 'okokGarage', 'none'
+    -- Set to 'none' to disable key handling
+    keySystem = 'wasabi_carlock',
+    
+    -- Fuel system integration
+    -- Options: 'legacyfuel', 'ox_fuel', 'cdn-fuel', 'ps-fuel', 'qb-fuel', 'lc_fuel', 'none'
+    -- Set to 'none' to disable fuel handling
+    fuelSystem = 'lc_fuel',
+    
     -- Vehicle certification groups - organize vehicles by certification type
     -- Each certification can optionally have a vehicle_spawner_id to limit it to specific peds
     -- If vehicle_spawner_id is not set, the vehicle is available to all vehicle_spawner peds
@@ -95,32 +107,32 @@ Config.Buyers = {
 -- These trades are only used to seed the database when Config.Database.seedFromConfig is true
 -- and the database table is empty. After that, use /exchangeadmin to manage trades.
 Config.Trades = {
-    {
-        trader = 1,
-        label = 'Buy Blacksmith Coal Ore',
-        description = 'Trade coal ore for Blacksmith coal ore',
-        receive = {
-            item = 'bs_coalore',
-            count = 1
-        },
-        cost = {
-            item = 'coalore',
-            count = 1
-        }
-    },
-    {
-        trader = 1,
-        label = 'Buy Coal Ore',
-        description = 'Trade Blacksmith coal ore for coal ore',
-        receive = {
-            item = 'coalore',
-            count = 1
-        },
-        cost = {
-            item = 'bs_coalore',
-            count = 1
-        }
-    },
+    -- {
+    --     trader = 1,
+    --     label = 'Buy Blacksmith Coal Ore',
+    --     description = 'Trade coal ore for Blacksmith coal ore',
+    --     receive = {
+    --         item = 'bs_coalore',
+    --         count = 1
+    --     },
+    --     cost = {
+    --         item = 'coalore',
+    --         count = 1
+    --     }
+    -- },
+    -- {
+    --     trader = 1,
+    --     label = 'Buy Coal Ore',
+    --     description = 'Trade Blacksmith coal ore for coal ore',
+    --     receive = {
+    --         item = 'coalore',
+    --         count = 1
+    --     },
+    --     cost = {
+    --         item = 'bs_coalore',
+    --         count = 1
+    --     }
+    -- },
  
     -- Add more trades like this:
     -- {
