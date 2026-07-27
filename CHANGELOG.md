@@ -33,6 +33,7 @@ All notable changes to this project are documented in this file.
 - Parameter example format now correctly displays in the input modal hint.
 - Vehicle Admin and Ped Admin now properly use cached data when switching between Admin Hub and admin menus (not just when minimized).
 - Fixed export names for fuel/key systems to match actual resource exports (e.g., `LegacyFuel`, `wasabi_carlock`).
+- **Ped Admin save/enable/disable UI not updating**: Fixed Ped Admin and Vehicle Spawner Admin not refreshing their UI after saving, toggling, or deleting entries. The issue was caused by refresh handlers reusing stale cached data instead of fetching fresh data from the server when the menu was open.
 
 ## [1.7] - 2026-07-26
 

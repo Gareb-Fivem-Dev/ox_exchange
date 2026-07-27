@@ -1174,7 +1174,17 @@ RegisterNetEvent('item_exchange:client:refreshVehicleAdmin', function()
         end
         return
     end
-    openVehicleSpawnerAdminMenu()
+    local data = lib.callback.await('item_exchange:server:getVehicleAdminData', false)
+    if data then
+        cachedVehicleAdminData = { certs = data.certs, vehicles = data.vehicles }
+        SetNuiFocus(true, true)
+        SendNUIMessage({
+            action = 'openVehicleAdmin',
+            title = 'Vehicle Spawner Admin',
+            certs = data.certs,
+            vehicles = data.vehicles
+        })
+    end
 end)
 
 RegisterNetEvent('item_exchange:client:adminAddTrade', function()
@@ -1250,7 +1260,16 @@ RegisterNetEvent('item_exchange:client:refreshPedAdminMenu', function()
         end
         return
     end
-    openPedAdminMenu()
+    local peds = lib.callback.await('item_exchange:server:getAdminPeds', false)
+    if peds then
+        cachedPedAdminData = { peds = peds }
+        SetNuiFocus(true, true)
+        SendNUIMessage({
+            action = 'openPedAdmin',
+            title = 'Ped Admin',
+            peds = peds
+        })
+    end
 end)
 
 RegisterNetEvent('item_exchange:client:refreshAdminHub', function()
