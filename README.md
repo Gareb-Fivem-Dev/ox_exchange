@@ -1,11 +1,10 @@
-# Item Exchange
-
 ## Version
 - Current release: **v1.8**
 - Baseline release: **v1.0**
 
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
+# Item Exchange
 A configurable FiveM item exchange and item buyer resource built for `ox_lib`, `ox_inventory`, `ox_target`, and `oxmysql`.
 
 Players interact with database-managed peds to either trade one item for another or sell items for money. Admins can manage peds, trades, and buyer offers in game through the included web UI, so you do not need to restart the resource every time you add or change an offer.
