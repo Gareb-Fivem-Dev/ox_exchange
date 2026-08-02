@@ -1,0 +1,3 @@
+[submodule "resources/[addons]/addon_rcore-clothing"]
+	path = resources/[addons]/addon_rcore-clothing
+	url = https://github.com/Gareb-Fivem-Dev/addon_rcore-clothing.git
